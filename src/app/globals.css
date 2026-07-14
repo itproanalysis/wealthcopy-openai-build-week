@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+:root {
+  --wc-navy: #082a66;
+  --wc-navy-deep: #051d48;
+  --wc-teal: #06a4a8;
+  --wc-teal-soft: #e8f8f8;
+  --wc-blue-soft: #edf4fb;
+  --wc-ink: #10213f;
+  --wc-muted: #64718a;
+  --wc-line: #dce5ef;
+  --wc-surface: #ffffff;
+  --wc-background: #f6f9fc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 90% 7%, rgba(6, 164, 168, 0.1), transparent 24rem),
+    linear-gradient(180deg, #ffffff 0%, var(--wc-background) 72%);
+  color: var(--wc-ink);
+  font-family:
+    "Pretendard Variable",
+    Pretendard,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+label,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: #b8eeee;
+  color: var(--wc-navy-deep);
+}
+
+@keyframes wc-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes wc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wc-rise {
+  animation: wc-rise 500ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .wc-rise {
+    animation: none;
+  }
+}
