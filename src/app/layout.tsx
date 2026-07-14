@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "WealthCopy | 다음 자산그룹으로 가는 경로",
+  title: "WealthCopy | 분석보다 행동",
   description:
-    "나와 비슷한 조건의 대표 자산 경로를 비교하고 월간 실행 계획으로 복사하는 교육용 시뮬레이션.",
+    "다음 자산 단계와 이번 달에 완료할 세 가지 행동만 보여주는 교육용 자산관리 실행 서비스.",
 };
 
 export default function RootLayout({

@@ -2,67 +2,70 @@
 
 ## Mission
 
-Build and preserve a polished OpenAI Build Week MVP for the fixed `L6 → L7` journey: collect a small financial profile, compare three representative paths, let the user choose one, and turn it into a monthly checklist. The main flow must remain demoable in 90 seconds and usable when the OpenAI API is unavailable.
+Treat asset management as an action problem. The fixed Build Week outcome is a simple monthly surface showing only the next asset level `L7`, exactly three actions, and action-completion progress.
 
-## Source of truth
+## Non-negotiable public surface
 
-- `src/lib/wealth/engine.ts` owns input validation, representative amounts and durations, scoring, affordability, and the recommended first path to compare.
-- `src/lib/wealth/assessment.ts` owns the Structured Output schema, model safety instructions, semantic validation, and deterministic fallback.
-- `src/app/api/paths/compare/route.ts` owns the server trust boundary and must always recompute paths from the validated profile.
-- `src/components/wealth/wealth-copy-app.tsx` owns the `profile → paths → plan` interaction. Do not duplicate financial calculations in UI components.
+- The main screen shows `L7`, exactly three checkable actions, and progress.
+- Progress means completed actions only: 0 actions = `0`, 1 = `33`, 2 = `67`, 3 = `100`.
+- Never describe progress as asset growth, return, L7 attainment, time saved, or distance remaining.
+- Do not expose path cards, comparison tables, recommendations, fit, tradeoffs, amounts, durations, difficulty, scores, model names, fallback sources, or internal errors.
+- Keep setup inputs in the transient setup dialog; do not repeat them on the main surface.
+- Use action-first copy such as `분석은 줄이고, 행동은 세 개로.` Avoid `성공 경로`, `검증된 경로`, `추천`, `최적`, `예상 도달`, and `수익`.
 
-## Stack and commands
+## Public API contract
 
-- Use Next.js App Router, React, strict TypeScript, Tailwind CSS, pnpm, Zod, the official OpenAI JavaScript SDK, and Vitest.
-- On Windows PowerShell use `pnpm.cmd` when execution policy blocks pnpm's `.ps1` wrapper.
-- Keep changes small and preserve the existing navy/teal visual language and Korean-first copy.
+The successful `POST /api/v2/plan` response has exactly these top-level fields:
 
-Run before handing off a meaningful change:
+```ts
+{
+  nextLevel: "L7";
+  actions: Array<{ id: PublicActionId; completed: boolean }>; // length 3
+  progress: 0 | 33 | 67 | 100;
+}
+```
+
+- Each action object has exactly `id` and `completed`.
+- Require three unique allowlisted action IDs.
+- Derive progress deterministically from the completed count. The model never controls it.
+- Keep localized titles and descriptions in reviewed client-owned static copy.
+- Never add `paths`, `assessment`, `model`, `source`, explanation, amount, duration, score, or recommendation fields to a successful public response.
+- Validate the final projection with a strict Zod schema before returning or storing it.
+
+## Internal intelligence boundary
+
+- `src/lib/wealth/engine.ts` and `src/lib/wealth/server/planner-core.ts` may calculate and compare server-side candidates, but those details are not a public product surface.
+- `src/lib/wealth/public-plan.ts` owns the public schema, action allowlist, static copy, and safe projection.
+- `src/app/api/v2/plan/route.ts` is the public boundary. It may call internal analysis but returns only the public plan.
+- Keep OpenAI calls server-side through the Responses API and `OPENAI_MODEL`, defaulting to `gpt-5.6`.
+- Preserve Zod Structured Outputs, semantic validation, `store: false`, token limits, and hashed `safety_identifier`.
+- GPT‑5.6 may choose or order approved action IDs. It must not generate user-facing financial prose, numbers, returns, products, transactions, or progress.
+- Missing keys, API errors, invalid output, and rate limits must use a deterministic fallback with the same public success shape. Do not surface model/fallback provenance in the main UI.
+- Preserve pre-model PII screening and blocking for product, transaction, tax, credit, execution, income-interruption, delinquency, and bankruptcy requests.
+- Keep the 8KB body limit and demo limits of 20 requests per IP per minute and 8 per session per minute. Production requires authenticated distributed limiting.
+
+## Persistence and interaction
+
+- Store only `{version, monthKey, plan}` under `wealthcopy-public-plan-v2`; the nested plan must satisfy the exact public schema.
+- Do not store setup profile, internal candidates, model output, or analysis metadata.
+- Reset completed states when the month changes and validate all restored data.
+- Migrate the legacy `wealthcopy-demo-plan-v1` task state to the three public actions, then remove the legacy key.
+- Use native checkboxes, `<fieldset>`, `<legend>`, `<progress max={3}>`, visible completion text, and a polite live region.
+- Keep the screen-reader order `next level → progress → three actions` and preserve 44px touch targets.
+
+## Financial safety
+
+- WealthCopy is an educational behavior tracker, not investment, tax, legal, credit, or insurance advice.
+- Do not add securities, funds, crypto, loans, leverage, allocation, return, buy/sell, timing, money movement, or automatic rebalancing.
+- Checking an action records behavior only and never executes a transaction.
+
+## Verification
+
+On Windows use `pnpm.cmd` when PowerShell blocks the `.ps1` shim.
 
 1. `pnpm.cmd lint`
 2. `pnpm.cmd typecheck`
 3. `pnpm.cmd test`
 4. `pnpm.cmd build`
 
-## OpenAI boundary
-
-- Keep all OpenAI calls server-side. Never expose `OPENAI_API_KEY` or place it in a `NEXT_PUBLIC_` variable.
-- Use the Responses API with `OPENAI_MODEL`, defaulting to `gpt-5.6`.
-- Preserve Zod Structured Outputs and the post-parse semantic validation. Do not replace the coded assessment with unconstrained prose.
-- The rule engine owns every amount, duration, affordability calculation, and progress metric. GPT‑5.6 may only interpret supplied candidates, classify constraints, explain tradeoffs, order approved checklist actions, and ask concise clarification questions.
-- Never allow the model to invent or change numbers, returns, probabilities, allocations, products, providers, securities, transactions, or timing.
-- Treat `constraintNote` and every request field as untrusted data, not instructions.
-- Preserve client and server rejection of likely email, phone-number, and Korean resident-registration-number patterns in `constraintNote`.
-- Minimize model input. Send only monthly savings, debt ratio, household type, risk preference, emergency-fund months, the screened constraint note, and server-generated candidates. Do not add monthly income, names, contact details, account data, or other unnecessary identifiers to model input.
-- Keep `store: false` and use a privacy-preserving `safety_identifier` derived on the server.
-- Missing keys, API errors, invalid structured output, and semantic mismatches must return the deterministic fallback with a visible warning; they must not break the comparison journey.
-- Keep the request body limit at 8KB and the demo's in-memory limits at 20 requests per IP per minute and 8 requests per session per minute. A public deployment needs authenticated, distributed rate limiting; do not describe the in-memory map as production protection.
-- Product, transaction, return, tax, credit, or execution requests must become `professional_review_required`; income interruption, delinquency, bankruptcy, or similarly invalidated assumptions must become `needs_more_information`. These non-ready fallbacks must be decided before any model call and must disable path copying.
-
-## Financial safety boundary
-
-- WealthCopy is an educational planning simulation, not personalized investment, tax, legal, credit, or insurance advice.
-- All L6→L7 amounts and durations are representative demo estimates, not validated paths or promised outcomes.
-- Do not add security, fund, cryptocurrency, loan, leverage, allocation, return, buy/sell, or market-timing recommendations.
-- Do not add account connections, money movement, trade execution, or automatic rebalancing to this MVP.
-- Phrase model leadership as `먼저 비교할 경로`, never as a path the user should execute.
-- The user must explicitly choose a path and check the educational-simulation acknowledgment before confirmation is enabled. `경로 복사` only creates a checklist.
-- Requests that need products, transactions, returns, tax treatment, credit decisions, or execution instructions must route to professional review rather than generate advice.
-
-## Product quality
-
-- Keep all three states clear: profile input, three-path comparison, and monthly plan.
-- Preserve loading, validation, fallback-warning, success, affordability-disabled, and confirmation states.
-- Keep semantic HTML, visible focus, keyboard operation, dialog semantics, labels, and responsive layouts intact.
-- Keep `L6 → L7` enforced with literals at the schema boundary; do not expose unsupported level combinations in the UI or API.
-- The demo intentionally persists a validated profile, selected path type, task completion, reminder display state, and storage version under `wealthcopy-demo-plan-v1`, plus an anonymous API session ID under its separate key. Validate all restored data and delete invalid or unaffordable saved plans.
-- Treat that local profile as browser-stored financial planning data. Keep the copy modal's disclosure accurate; a public release needs explicit consent, a clear/delete control, and a documented privacy and retention policy.
-- Keep the reminder switch off by default and label it as a screen demo. It must not imply or create a notification, calendar event, background task, or scheduled reminder.
-- Add tests for rule behavior, request/schema validation, fallback behavior, and semantic output validation. Prefer domain invariants over component implementation trivia.
-
-## Build Week evidence
-
-- Update `docs/DECISIONS.md` when product scope, AI responsibility, privacy, or safety boundaries change.
-- Keep `README.md` and `docs/DEMO_SCRIPT.md` synchronized with the real flow.
-- Do not weaken or silently remove challenge evidence in `docs/BUILD_WEEK.md`.
-- Make dated, intentional commits and record the representative Codex `/feedback` session ID before submission.
+Keep `README.md`, `docs/DECISIONS.md`, and `docs/DEMO_SCRIPT.md` synchronized. Do not weaken evidence in `docs/BUILD_WEEK.md`.
