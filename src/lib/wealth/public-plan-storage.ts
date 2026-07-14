@@ -31,7 +31,7 @@ export function serializeStoredPlan(monthKey: string, plan: PublicPlan) {
   );
 }
 
-export function parseStoredPlan(raw: string | null, currentMonth: string) {
+export function restoreStoredPlan(raw: string | null, currentMonth: string) {
   if (!raw) return null;
 
   try {
@@ -39,15 +39,22 @@ export function parseStoredPlan(raw: string | null, currentMonth: string) {
     if (!parsed.success) return null;
 
     if (parsed.data.monthKey !== currentMonth) {
-      return projectPublicPlan(
-        parsed.data.plan.actions.map((action) => action.id),
-      );
+      return {
+        plan: projectPublicPlan(
+          parsed.data.plan.actions.map((action) => action.id),
+        ),
+        rolledOver: true,
+      };
     }
 
-    return parsed.data.plan;
+    return { plan: parsed.data.plan, rolledOver: false };
   } catch {
     return null;
   }
+}
+
+export function parseStoredPlan(raw: string | null, currentMonth: string) {
+  return restoreStoredPlan(raw, currentMonth)?.plan ?? null;
 }
 
 export function migrateLegacyPlan(raw: string | null) {

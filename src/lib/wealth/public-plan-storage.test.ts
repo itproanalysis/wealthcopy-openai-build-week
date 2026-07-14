@@ -4,6 +4,7 @@ import { projectPublicPlan } from "./public-plan";
 import {
   migrateLegacyPlan,
   parseStoredPlan,
+  restoreStoredPlan,
   serializeStoredPlan,
 } from "./public-plan-storage";
 
@@ -22,6 +23,7 @@ describe("public plan storage", () => {
     const raw = serializeStoredPlan("2026-07", plan);
 
     expect(parseStoredPlan(raw, "2026-07")).toEqual(plan);
+    expect(restoreStoredPlan(raw, "2026-07")?.rolledOver).toBe(false);
     expect(JSON.parse(raw)).not.toHaveProperty("profile");
   });
 
@@ -37,6 +39,10 @@ describe("public plan storage", () => {
 
     expect(restored?.progress).toBe(0);
     expect(restored?.actions.every((action) => !action.completed)).toBe(true);
+    expect(
+      restoreStoredPlan(serializeStoredPlan("2026-06", plan), "2026-07")
+        ?.rolledOver,
+    ).toBe(true);
   });
 
   it("rejects stored records that smuggle old profile data", () => {

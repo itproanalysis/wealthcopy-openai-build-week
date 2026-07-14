@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  carryCompletedActions,
   projectPublicPlan,
   publicPlanSchema,
   recalculatePublicPlan,
@@ -59,5 +60,32 @@ describe("public plan contract", () => {
     };
 
     expect(publicPlanSchema.safeParse(invalid).success).toBe(false);
+  });
+
+  it("keeps completion only for actions shared with a regenerated plan", () => {
+    const previous = projectPublicPlan(
+      [
+        "review_cash_buffer",
+        "review_debt_schedule",
+        "schedule_monthly_checkin",
+      ],
+      new Set<PublicActionId>([
+        "review_cash_buffer",
+        "review_debt_schedule",
+      ]),
+    );
+
+    const next = carryCompletedActions(previous, [
+      "review_cash_buffer",
+      "confirm_monthly_limit",
+      "schedule_monthly_checkin",
+    ]);
+
+    expect(next.progress).toBe(33);
+    expect(next.actions.map((action) => action.completed)).toEqual([
+      true,
+      false,
+      false,
+    ]);
   });
 });

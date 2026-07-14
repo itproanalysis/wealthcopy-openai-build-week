@@ -17,27 +17,33 @@ export const PUBLIC_ACTION_COPY: Record<
 > = {
   review_cash_buffer: {
     title: "현금 여유 확인하기",
-    description: "이번 달 생활비와 비상자금에 변화가 없는지 확인해요.",
+    description:
+      "생활비·비상자금 변동을 확인하고, 없거나 반영했으면 완료해요.",
   },
   confirm_monthly_limit: {
-    title: "월 실행 한도 정하기",
-    description: "이번 달에 무리 없이 지킬 수 있는 실행 한도를 정해요.",
+    title: "월 실행 비율 확정하기",
+    description:
+      "소득 대비 저축·상환 비율을 이번 달 기준으로 확정하면 완료해요.",
   },
   review_debt_schedule: {
     title: "부채 납부 일정 점검하기",
-    description: "이번 달 납부 일정에서 빠진 항목이 없는지 확인해요.",
+    description:
+      "이번 달 납부일과 자동이체 상태를 모두 확인하면 완료해요.",
   },
   review_income_change: {
     title: "소득 변화 다시 확인하기",
-    description: "달라진 소득 조건을 확인하고 이번 달 행동 범위를 다시 잡아요.",
+    description:
+      "달라진 소득 조건을 확인하고 행동 범위를 다시 정하면 완료해요.",
   },
   schedule_monthly_checkin: {
-    title: "월말 상태 기록하기",
-    description: "이번 달 변화를 기록하고 다음 달에 이어가요.",
+    title: "월말 점검 일정 잡기",
+    description:
+      "월말 점검 날짜를 캘린더에 잡고 다음 달 연결을 준비하면 완료해요.",
   },
   seek_professional_review: {
     title: "전문가와 범위 확인하기",
-    description: "거래나 세금 판단이 필요한 부분은 자격 있는 전문가와 확인해요.",
+    description:
+      "거래·세금 판단의 상담 범위를 자격 있는 전문가와 정하면 완료해요.",
   },
 };
 
@@ -114,4 +120,17 @@ export function projectPublicPlan(
     actions,
     progress: [0, 33, 67, 100][completedCount],
   });
+}
+
+export function carryCompletedActions(
+  previousPlan: PublicPlan | null,
+  nextActionIds: readonly PublicActionId[],
+) {
+  const completedIds = new Set(
+    previousPlan?.actions
+      .filter((action) => action.completed)
+      .map((action) => action.id) ?? [],
+  );
+
+  return projectPublicPlan(nextActionIds, completedIds);
 }

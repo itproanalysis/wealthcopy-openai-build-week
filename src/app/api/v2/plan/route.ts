@@ -16,6 +16,7 @@ import {
   getOpenAIModel,
   MissingOpenAIKeyError,
 } from "@/lib/openai";
+import { publicPlanSchema } from "@/lib/wealth/public-plan";
 
 export const runtime = "nodejs";
 
@@ -72,20 +73,34 @@ function anonymousSafetyIdentifier(sessionId: string) {
   return createHash("sha256").update(sessionId).digest("hex");
 }
 
+function jsonNoStore(value: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store");
+
+  return NextResponse.json(value, {
+    ...init,
+    headers,
+  });
+}
+
+function publicPlanResponse(value: unknown, init?: ResponseInit) {
+  return jsonNoStore(publicPlanSchema.parse(value), init);
+}
+
 export async function POST(request: Request) {
   let payload: unknown;
 
   try {
     const rawBody = await request.text();
     if (new TextEncoder().encode(rawBody).byteLength > 8_192) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: "요청 본문은 8KB를 넘을 수 없습니다." },
         { status: 413 },
       );
     }
     payload = JSON.parse(rawBody);
   } catch {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "유효한 JSON 요청을 보내 주세요." },
       { status: 400 },
     );
@@ -93,7 +108,7 @@ export async function POST(request: Request) {
 
   const parsed = planRequestSchema.safeParse(payload);
   if (!parsed.success) {
-    return NextResponse.json(
+    return jsonNoStore(
       {
         error:
           parsed.error.issues[0]?.message ??
@@ -105,7 +120,7 @@ export async function POST(request: Request) {
 
   const context = createPlanningContext(parsed.data);
   if (!context.allowModel) {
-    return NextResponse.json(context.fallback);
+    return publicPlanResponse(context.fallback);
   }
 
   const safetyIdentifier = anonymousSafetyIdentifier(parsed.data.sessionId);
@@ -121,7 +136,7 @@ export async function POST(request: Request) {
       ipLimit.retryAfterSeconds,
       sessionLimit.retryAfterSeconds,
     );
-    return NextResponse.json(context.fallback, {
+    return publicPlanResponse(context.fallback, {
       headers: { "Retry-After": String(retryAfterSeconds) },
     });
   }
@@ -143,7 +158,7 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json(
+    return publicPlanResponse(
       mergeModelSelection(context, response.output_parsed),
     );
   } catch (error) {
@@ -156,6 +171,6 @@ export async function POST(request: Request) {
       console.error("Unexpected action selection error", error);
     }
 
-    return NextResponse.json(context.fallback);
+    return publicPlanResponse(context.fallback);
   }
 }

@@ -5,23 +5,27 @@ import {
   type WealthProfile,
   wealthProfileSchema,
 } from "./engine";
+import {
+  BEHAVIOR_POLICY_VERSION,
+  INTERNAL_PATH_LIBRARY,
+  debtServiceBand,
+  incomeExecutionBand,
+} from "./path-library";
+import { publicActionIdSchema } from "./public-plan";
 
 const balancedProfile: WealthProfile = {
   currentLevel: "L6",
   targetLevel: "L7",
-  monthlyIncome: 6_500_000,
-  monthlySavings: 3_100_000,
-  debtRatio: 18,
-  householdType: "single",
-  riskPreference: "balanced",
-  emergencyFundMonths: 5,
+  incomeExecutionRatio: 35,
+  assetPercentileBand: "p50_74",
+  debtServiceRatio: 18,
 };
 
 describe("wealthProfileSchema", () => {
-  it("rejects savings above income", () => {
+  it("rejects ratios outside the currency-neutral range", () => {
     const result = wealthProfileSchema.safeParse({
       ...balancedProfile,
-      monthlySavings: balancedProfile.monthlyIncome + 1,
+      incomeExecutionRatio: 101,
     });
 
     expect(result.success).toBe(false);
@@ -38,7 +42,26 @@ describe("wealthProfileSchema", () => {
 });
 
 describe("matchWealthPaths", () => {
-  it("returns the three path library entries in stable order", () => {
+  it("versions the internal behavior policy independently from PSID data", () => {
+    expect(BEHAVIOR_POLICY_VERSION).toBe("behavior-policy-v1");
+  });
+
+  it("locks the reviewed ratio band boundaries", () => {
+    expect([19, 20, 39, 40].map(incomeExecutionBand)).toEqual([
+      "limited",
+      "steady",
+      "steady",
+      "strong",
+    ]);
+    expect([19, 20, 39, 40].map(debtServiceBand)).toEqual([
+      "manageable",
+      "watch",
+      "watch",
+      "high",
+    ]);
+  });
+
+  it("returns the three internal candidates in stable order", () => {
     const paths = matchWealthPaths(balancedProfile);
 
     expect(paths.map((path) => path.type)).toEqual([
@@ -52,21 +75,29 @@ describe("matchWealthPaths", () => {
     );
   });
 
-  it("keeps slide fixture values for the L6 to L7 demo", () => {
+  it("keeps monetary values and duration estimates out of candidates", () => {
     const paths = matchWealthPaths(balancedProfile);
 
-    expect(paths.map((path) => path.monthlyRequired)).toEqual([
-      2_400_000, 3_100_000, 4_200_000,
-    ]);
-    expect(paths.map((path) => path.durationMonths)).toEqual([77, 62, 54]);
+    for (const path of paths) {
+      expect(Object.keys(path).sort()).toEqual([
+        "actionPriority",
+        "recommended",
+        "score",
+        "type",
+      ]);
+    }
+
+    expect(JSON.stringify(paths)).not.toMatch(
+      /amount|currency|durationMonths|monthlyRequired|return|yield/i,
+    );
   });
 
-  it("moves a low-buffer, high-debt profile away from fast", () => {
+  it("moves a high-debt profile away from fast", () => {
     const paths = matchWealthPaths({
       ...balancedProfile,
-      debtRatio: 48,
-      emergencyFundMonths: 1,
-      riskPreference: "fast",
+      incomeExecutionRatio: 50,
+      assetPercentileBand: "below_25",
+      debtServiceRatio: 45,
     });
 
     expect(paths.find((path) => path.type === "stable")?.recommended).toBe(
@@ -77,15 +108,88 @@ describe("matchWealthPaths", () => {
     );
   });
 
-  it("reports a transparent budget gap", () => {
+  it("can prefer fast only with strong capacity and low debt burden", () => {
     const paths = matchWealthPaths({
       ...balancedProfile,
-      monthlySavings: 2_500_000,
+      incomeExecutionRatio: 55,
+      assetPercentileBand: "unknown",
+      debtServiceRatio: 8,
     });
 
-    expect(paths.find((path) => path.type === "balanced")?.budgetGap).toBe(
-      600_000,
+    expect(paths.find((path) => path.type === "fast")?.recommended).toBe(
+      true,
     );
-    expect(paths.find((path) => path.type === "stable")?.budgetGap).toBe(0);
+  });
+
+  it("requires strong execution and manageable debt before fast can lead", () => {
+    for (const profile of [
+      {
+        ...balancedProfile,
+        incomeExecutionRatio: 39,
+        assetPercentileBand: "p90_plus" as const,
+        debtServiceRatio: 10,
+      },
+      {
+        ...balancedProfile,
+        incomeExecutionRatio: 55,
+        assetPercentileBand: "p90_plus" as const,
+        debtServiceRatio: 20,
+      },
+    ]) {
+      expect(
+        matchWealthPaths(profile).find((path) => path.recommended)?.type,
+      ).not.toBe("fast");
+    }
+  });
+
+  it("does not use a self-selected PSID band to set execution pace", () => {
+    const scores = [
+      "below_25",
+      "p25_49",
+      "p50_74",
+      "p75_89",
+      "p90_plus",
+      "unknown",
+    ].map((assetPercentileBand) =>
+      matchWealthPaths({
+        ...balancedProfile,
+        assetPercentileBand: assetPercentileBand as WealthProfile["assetPercentileBand"],
+      }).map((path) => path.score),
+    );
+
+    for (const scoreSet of scores.slice(1)) {
+      expect(scoreSet).toEqual(scores[0]);
+    }
+  });
+
+  it("provides unique allowlisted action priorities for every internal path", () => {
+    const paths = matchWealthPaths(balancedProfile);
+
+    for (const path of paths) {
+      expect(path.actionPriority).toEqual(
+        INTERNAL_PATH_LIBRARY[path.type].actionPriority,
+      );
+      expect(new Set(path.actionPriority).size).toBe(path.actionPriority.length);
+      expect(path.actionPriority).toHaveLength(4);
+      for (const actionId of path.actionPriority) {
+        expect(publicActionIdSchema.safeParse(actionId).success).toBe(true);
+      }
+    }
+  });
+
+  it("keeps the path library free of predictions and monetary fixtures", () => {
+    for (const definition of Object.values(INTERNAL_PATH_LIBRARY)) {
+      expect(Object.keys(definition).sort()).toEqual([
+        "actionPriority",
+        "baseScore",
+        "debtServiceWeights",
+        "incomeExecutionWeights",
+        "type",
+      ]);
+    }
+
+    expect(JSON.stringify(INTERNAL_PATH_LIBRARY)).not.toMatch(
+      /amount|currency|durationMonths|monthlyRequired|return|yield|krw|usd/i,
+    );
   });
 });
