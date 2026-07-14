@@ -13,9 +13,9 @@ The event's 100 USD credit is for Codex, not OpenAI API usage. Budget GPT-5.6 AP
 
 ## Evidence to capture while building
 
-- [ ] Dated Git commits showing work completed during the challenge
-- [ ] Product and architecture decisions in docs/DECISIONS.md
-- [ ] Representative prompts, eval cases, and sample data
+- [x] Dated Git commits showing work completed during the challenge
+- [x] Product and architecture decisions in docs/DECISIONS.md
+- [x] Representative prompts, eval cases, and sample data
 - [ ] Screenshots or recordings of important milestones
 - [ ] A representative Codex task Session ID obtained with /feedback
 
@@ -23,7 +23,7 @@ Representative Codex Session ID: TODO
 
 ## Submission package
 
-- [ ] Working project
+- [x] Working project
 - [ ] One selected category and a short English description
 - [ ] Public YouTube demo with audio; target 2:59 or less
 - [ ] Demo explains the product, Codex development process, and GPT-5.6 integration
