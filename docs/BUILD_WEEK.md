@@ -25,6 +25,7 @@ The event's 100 USD credit is for Codex, not OpenAI API usage. Budget GPT-5.6 AP
 - [x] Month rollover discards the stale classification and requires a fresh household asset snapshot.
 - [x] The `wealthcopy-public-plan-v4` record is exactly `{version, monthKey, sourceLevel, plan}`; older plan records are discarded rather than migrated.
 - [x] The anonymous session UUID uses the separate `wealthcopy-anonymous-session` localStorage key and is not financial profile data.
+- [x] The production standalone container is deployed publicly to Cloud Run in Seoul with a dedicated runtime identity and a version-pinned Secret Manager key.
 
 ## Evidence to capture while building
 
@@ -39,6 +40,7 @@ Representative Codex Session ID: TODO
 ## Submission package
 
 - [x] Working project
+- [x] Public Cloud Run deployment: https://wealth-copy-470320899177.asia-northeast3.run.app
 - [ ] One selected category and a short English description
 - [ ] Public YouTube demo with audio; target 2:59 or less
 - [ ] Demo explains the product, Codex development process, and GPT-5.6 integration

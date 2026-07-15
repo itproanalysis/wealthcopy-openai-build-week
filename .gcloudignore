@@ -1,0 +1,17 @@
+.gcloudignore
+.git
+.github
+.next
+.vscode
+node_modules
+coverage
+docs
+기획서
+
+.env
+.env.*
+!.env.example
+
+*.log
+*.tsbuildinfo
+next-env.d.ts

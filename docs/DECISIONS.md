@@ -1,5 +1,15 @@
 # Decision log
 
+## 2026-07-15 — 서울 Cloud Run에 최소권한 공개 데모 배포
+
+Decision: Next.js를 Node.js 24 standalone 컨테이너로 만들고 GCP 프로젝트 `abis-web-platform`의 서울 리전 Cloud Run 서비스 `wealth-copy`에 배포한다. 런타임은 전용 서비스 계정 `wealth-copy-run`을 사용하고 OpenAI 키는 Secret Manager의 버전 고정 환경변수로만 주입한다. 공개 데모는 최소 인스턴스 0, 최대 3, 동시 요청 20, 요청 제한 120초로 운영한다.
+
+Why: 메인 화면과 서버 계획 API를 같은 origin에서 운영하면서 TLS, scale-to-zero, revision과 로그를 관리형 서비스로 확보할 수 있다. 전용 서비스 계정과 secret 단위 접근 권한은 다른 프로젝트 리소스와 OpenAI 키의 권한 범위를 줄인다.
+
+Evidence: revision `wealth-copy-00001-lkh`가 100% 트래픽을 받고 있으며 공개 페이지, 실제 OpenAI 요청, `L1 → L2`, `L14 → L15`, `L15 → L15` API 계약과 no-store 헤더가 검증됐다. 배포 후 Cloud Run 오류 로그와 OpenAI 오류 로그는 0건이었다.
+
+Limits: 현재 IP·세션 rate limit은 인스턴스 메모리에만 있어 scale-out 전체에 대한 전역 제한이 아니다. 정식 운영 전 인증, 분산 rate limit, 비용 알림, 보존·삭제 정책, 모니터링과 법률 검토가 필요하다. Cloud Run 기본 TCP startup probe를 사용하며 별도 애플리케이션 health endpoint는 아직 없다.
+
 ## 2026-07-15 — 가구 순자산으로 L1–L15를 자동분류
 
 Decision: 사용자가 입력한 `가구 총자산`과 `가구 총부채`로 `가구 순자산 = 총자산 - 총부채`를 계산하고 `krw-net-worth-v1` 제품 정책에 따라 현재 레벨을 자동분류한다. 클라이언트가 현재 레벨을 직접 지정하지 않는다.
