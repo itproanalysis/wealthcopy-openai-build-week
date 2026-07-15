@@ -34,7 +34,7 @@ export function createMonthlyCheckinCalendar(
       `DTSTART;VALUE=DATE:${start}`,
       `DTEND;VALUE=DATE:${end}`,
       "SUMMARY:WealthCopy 월말 행동 점검",
-      "DESCRIPTION:이번 달 행동 3개의 완료 상태를 확인하고 다음 달 행동을 이어갑니다.",
+      "DESCRIPTION:이번 달 행동 3개의 완료 상태를 확인하고 다음 달 계획을 새로 준비합니다.",
       "TRANSP:TRANSPARENT",
       "END:VEVENT",
       "END:VCALENDAR",

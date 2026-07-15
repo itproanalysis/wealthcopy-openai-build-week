@@ -10,7 +10,6 @@ import {
 import {
   PUBLIC_ACTION_COPY,
   carryCompletedActions,
-  projectPublicPlan,
   publicPlanSchema,
   recalculatePublicPlan,
   type PublicActionId,
@@ -18,15 +17,14 @@ import {
 } from "@/lib/wealth/public-plan";
 import {
   DEFAULT_PUBLIC_ACTION_IDS,
-  LEGACY_FIXED_TARGET_SOURCE_LEVEL,
-  migrateLegacyPlan,
-  migrateStoredPlanV2,
-  parseStoredPlan,
   restoreStoredPlan,
   serializeStoredPlan,
 } from "@/lib/wealth/public-plan-storage";
 import {
-  ASSET_LEVELS,
+  ASSET_LEVEL_LABELS,
+  WEALTH_SOURCE_LEVEL_HEADER,
+  assetLevelSchema,
+  nextAssetLevel,
   type AssetLevel,
 } from "@/lib/wealth/asset-level";
 import { createMonthlyCheckinCalendar } from "@/lib/wealth/monthly-checkin-calendar";
@@ -35,11 +33,17 @@ import type { PsidAssetPercentileBand } from "@/lib/wealth/normalized-profile";
 import { WealthLogo } from "./logo";
 
 type SetupProfile = {
-  currentLevel: AssetLevel | "";
+  totalAssetsEok: number | "";
+  totalDebtEok: number | "";
   incomeExecutionRatio: number | "";
   assetPercentileBand: PsidAssetPercentileBand;
   debtServiceRatio: number | "";
 };
+
+type ActionSignals = Pick<
+  SetupProfile,
+  "incomeExecutionRatio" | "assetPercentileBand" | "debtServiceRatio"
+>;
 
 type ApiErrorBody = {
   error?: string;
@@ -47,13 +51,17 @@ type ApiErrorBody = {
 
 class UserFacingPlanError extends Error {}
 
-const PLAN_STORAGE_KEY = "wealthcopy-public-plan-v3";
-const PREVIOUS_PLAN_STORAGE_KEY = "wealthcopy-public-plan-v2";
-const LEGACY_PLAN_STORAGE_KEY = "wealthcopy-demo-plan-v1";
+const PLAN_STORAGE_KEY = "wealthcopy-public-plan-v4";
+const DEPRECATED_PLAN_STORAGE_KEYS = [
+  "wealthcopy-public-plan-v3",
+  "wealthcopy-public-plan-v2",
+  "wealthcopy-demo-plan-v1",
+] as const;
 const SESSION_STORAGE_KEY = "wealthcopy-anonymous-session";
 
 const INITIAL_PROFILE: SetupProfile = {
-  currentLevel: "",
+  totalAssetsEok: "",
+  totalDebtEok: "",
   incomeExecutionRatio: "",
   assetPercentileBand: "unknown",
   debtServiceRatio: "",
@@ -61,30 +69,16 @@ const INITIAL_PROFILE: SetupProfile = {
 
 const INITIAL_NOTE = "";
 
-const WEALTH_JOURNEY_LABELS: Record<AssetLevel, string> = {
-  L1: "시작",
-  L2: "흐름 정리",
-  L3: "현금 안전망",
-  L4: "납부 안정",
-  L5: "월 실행",
-  L6: "자산 구조",
-  L7: "장기 유지",
-};
-
-const ASSET_PERCENTILE_LABELS: Record<
-  PsidAssetPercentileBand,
-  string
-> = {
-  below_25: "참조 분포 25백분위 미만",
-  p25_49: "참조 분포 25–49백분위",
-  p50_74: "참조 분포 50–74백분위",
-  p75_89: "참조 분포 75–89백분위",
-  p90_plus: "참조 분포 90백분위 이상",
-  unknown: "잘 모르겠어요",
-};
-
 const inputClass =
   "mt-2 h-12 w-full rounded-2xl border border-[#d8e3ee] bg-white px-4 text-[15px] font-semibold text-[#10213f] outline-none transition placeholder:font-normal placeholder:text-[#9aa7b9] focus:border-[#06a4a8] focus:ring-4 focus:ring-[#06a4a8]/10";
+
+const KRW_PER_EOK = 100_000_000;
+const MAX_EOK_INPUT =
+  Math.floor((Number.MAX_SAFE_INTEGER / KRW_PER_EOK) * 100) / 100;
+
+function eokToKrw(value: number) {
+  return Math.round(value * KRW_PER_EOK);
+}
 
 function monthKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -129,18 +123,17 @@ export function WealthCopyApp() {
   const [calendarNow, setCalendarNow] = useState(() => new Date());
   const [journeySourceLevel, setJourneySourceLevel] =
     useState<AssetLevel | null>(null);
-  const [journeyLevelSuggestion, setJourneyLevelSuggestion] =
-    useState<AssetLevel | null>(null);
 
   const pageContentRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const levelInputRef = useRef<HTMLSelectElement>(null);
-  const firstInputRef = useRef<HTMLInputElement>(null);
-  const debtInputRef = useRef<HTMLInputElement>(null);
+  const totalAssetsInputRef = useRef<HTMLInputElement>(null);
+  const totalDebtInputRef = useRef<HTMLInputElement>(null);
+  const executionRatioInputRef = useRef<HTMLInputElement>(null);
+  const debtRatioInputRef = useRef<HTMLInputElement>(null);
   const firstActionInputRef = useRef<HTMLInputElement>(null);
   const focusNewPlanRef = useRef(false);
   const requestAbortRef = useRef<AbortController>(null);
-  const lastProfileRef = useRef<SetupProfile | null>(null);
+  const lastActionSignalsRef = useRef<ActionSignals | null>(null);
 
   const currentMonth = monthKey(calendarNow);
   const currentMonthLabel = monthLabel(calendarNow);
@@ -152,94 +145,47 @@ export function WealthCopyApp() {
   const activeActionId =
     plan?.actions.find((action) => !action.completed)?.id ?? null;
   const nextLevelLabel = plan?.nextLevel ?? "NEXT";
-  const suggestedCurrentLevel =
-    plan?.progress === 100
-      ? plan.nextLevel
-      : journeyLevelSuggestion;
+  const isMaintenanceLevel =
+    journeySourceLevel === "L15" && plan?.nextLevel === "L15";
 
   useEffect(() => {
     const restoreTimer = window.setTimeout(() => {
       try {
-        let restoredPlan = restoreStoredPlan(
+        const hadDeprecatedPlan = DEPRECATED_PLAN_STORAGE_KEYS.some(
+          (key) => window.localStorage.getItem(key) !== null,
+        );
+        DEPRECATED_PLAN_STORAGE_KEYS.forEach((key) =>
+          window.localStorage.removeItem(key),
+        );
+
+        const restoredPlan = restoreStoredPlan(
           window.localStorage.getItem(PLAN_STORAGE_KEY),
           currentMonth,
         );
 
-        if (!restoredPlan) {
-          restoredPlan = migrateStoredPlanV2(
-            window.localStorage.getItem(PREVIOUS_PLAN_STORAGE_KEY),
-            currentMonth,
-          );
-          if (restoredPlan) {
-            window.localStorage.setItem(
-              PLAN_STORAGE_KEY,
-              serializeStoredPlan(
-                currentMonth,
-                restoredPlan.sourceLevel,
-                restoredPlan.plan,
-              ),
-            );
-            window.localStorage.removeItem(PREVIOUS_PLAN_STORAGE_KEY);
-          }
-        }
-
         if (restoredPlan) {
-          window.localStorage.removeItem(PREVIOUS_PLAN_STORAGE_KEY);
-          if (
-            restoredPlan.rolledOver &&
-            restoredPlan.previousMonthCompleted
-          ) {
-            setJourneyLevelSuggestion(restoredPlan.plan.nextLevel);
+          if (restoredPlan.rolledOver) {
             window.localStorage.removeItem(PLAN_STORAGE_KEY);
             setPlan(null);
             setJourneySourceLevel(null);
             setStatusMessage(
-              `지난달 행동을 모두 완료했어요. ${restoredPlan.plan.nextLevel}를 현재 단계 후보로 확인하고 다음 행동을 복제해 주세요.`,
+              "새 달이 시작됐어요. 최신 가구 자산정보를 입력해 현재 레벨과 행동을 다시 준비해 주세요.",
             );
             return;
           }
 
           setPlan(restoredPlan.plan);
           setJourneySourceLevel(restoredPlan.sourceLevel);
-          window.localStorage.removeItem(LEGACY_PLAN_STORAGE_KEY);
+          setStatusMessage("이번 달 행동 기록을 불러왔어요.");
+          return;
+        }
+
+        window.localStorage.removeItem(PLAN_STORAGE_KEY);
+        if (hadDeprecatedPlan) {
           setStatusMessage(
-            restoredPlan.rolledOver
-              ? "지난달 행동을 이번 달로 이어왔어요. 완료 상태는 초기화했어요."
-              : "이번 달 행동 기록을 불러왔어요.",
+            "레벨 기준이 새로워졌어요. 최신 가구 자산정보로 행동을 다시 준비해 주세요.",
           );
-          return;
         }
-
-        const migratedPlan = migrateLegacyPlan(
-          window.localStorage.getItem(LEGACY_PLAN_STORAGE_KEY),
-        );
-
-        if (!migratedPlan) {
-          window.localStorage.removeItem(PLAN_STORAGE_KEY);
-          window.localStorage.removeItem(PREVIOUS_PLAN_STORAGE_KEY);
-          window.localStorage.removeItem(LEGACY_PLAN_STORAGE_KEY);
-          return;
-        }
-
-        window.localStorage.setItem(
-          PLAN_STORAGE_KEY,
-          serializeStoredPlan(
-            currentMonth,
-            LEGACY_FIXED_TARGET_SOURCE_LEVEL,
-            migratedPlan,
-          ),
-        );
-
-        const verified = parseStoredPlan(
-          window.localStorage.getItem(PLAN_STORAGE_KEY),
-          currentMonth,
-        );
-        if (!verified) return;
-
-        window.localStorage.removeItem(LEGACY_PLAN_STORAGE_KEY);
-        setPlan(verified);
-        setJourneySourceLevel(LEGACY_FIXED_TARGET_SOURCE_LEVEL);
-        setStatusMessage("기존 행동 기록을 새 화면으로 옮겼어요.");
       } finally {
         setIsRestoring(false);
       }
@@ -254,25 +200,12 @@ export function WealthCopyApp() {
       if (monthKey(now) === monthKey(calendarNow)) return;
 
       setIsRestoring(true);
-      if (plan?.progress === 100) {
-        setJourneyLevelSuggestion(plan.nextLevel);
-        window.localStorage.removeItem(PLAN_STORAGE_KEY);
-        setPlan(null);
-        setJourneySourceLevel(null);
-        setStatusMessage(
-          `지난달 행동을 모두 완료했어요. ${plan.nextLevel}를 현재 단계 후보로 확인하고 다음 행동을 복제해 주세요.`,
-        );
-      } else {
-        setPlan((current) =>
-          current
-            ? projectPublicPlan(
-                current.nextLevel,
-                current.actions.map((action) => action.id),
-              )
-            : null,
-        );
-        setStatusMessage("새 달이 시작되어 행동 완료 상태를 초기화했어요.");
-      }
+      window.localStorage.removeItem(PLAN_STORAGE_KEY);
+      setPlan(null);
+      setJourneySourceLevel(null);
+      setStatusMessage(
+        "새 달이 시작됐어요. 최신 가구 자산정보로 레벨과 행동을 다시 준비해 주세요.",
+      );
       setCalendarNow(now);
       setIsRestoring(false);
     };
@@ -284,7 +217,7 @@ export function WealthCopyApp() {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", syncMonth);
     };
-  }, [calendarNow, plan]);
+  }, [calendarNow]);
 
   useEffect(() => {
     if (!plan || !journeySourceLevel) return;
@@ -319,7 +252,10 @@ export function WealthCopyApp() {
     const previouslyFocused = document.activeElement;
     const pageContent = pageContentRef.current;
     const previousOverflow = document.body.style.overflow;
-    const focusTimer = window.setTimeout(() => levelInputRef.current?.focus(), 0);
+    const focusTimer = window.setTimeout(
+      () => totalAssetsInputRef.current?.focus(),
+      0,
+    );
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -367,22 +303,11 @@ export function WealthCopyApp() {
   }, [setupOpen]);
 
   function openSetup() {
-    const suggestedLevel = suggestedCurrentLevel;
-    const previousProfile = lastProfileRef.current;
-
     setSetupError(null);
-    setProfile(
-      previousProfile
-        ? {
-            ...previousProfile,
-            currentLevel:
-              suggestedLevel ?? previousProfile.currentLevel,
-          }
-        : {
-            ...INITIAL_PROFILE,
-            currentLevel: suggestedLevel ?? "",
-          },
-    );
+    setProfile({
+      ...INITIAL_PROFILE,
+      ...lastActionSignalsRef.current,
+    });
     setConstraintNote(INITIAL_NOTE);
     setSetupOpen(true);
   }
@@ -408,38 +333,73 @@ export function WealthCopyApp() {
     if (!profile || constraintNote === null) return;
 
     const {
-      currentLevel,
+      totalAssetsEok,
+      totalDebtEok,
       incomeExecutionRatio,
       assetPercentileBand,
       debtServiceRatio,
     } = profile;
-    if (currentLevel === "") {
-      setSetupError("현재 자산 단계를 직접 선택해 주세요.");
-      levelInputRef.current?.focus();
+    if (
+      totalAssetsEok === "" ||
+      !Number.isFinite(totalAssetsEok) ||
+      totalAssetsEok < 0
+    ) {
+      setSetupError("현재 보유한 총자산을 0 이상의 숫자로 입력해 주세요.");
+      totalAssetsInputRef.current?.focus();
       return;
     }
-    if (incomeExecutionRatio === "") {
-      setSetupError("소득 대비 실행 비율을 입력해 주세요.");
-      firstInputRef.current?.focus();
+    if (
+      totalDebtEok === "" ||
+      !Number.isFinite(totalDebtEok) ||
+      totalDebtEok < 0
+    ) {
+      setSetupError("현재 남은 총부채를 0 이상의 숫자로 입력해 주세요.");
+      totalDebtInputRef.current?.focus();
       return;
     }
-    if (debtServiceRatio === "") {
-      setSetupError("부채비율을 입력해 주세요.");
-      debtInputRef.current?.focus();
+    if (
+      incomeExecutionRatio === "" ||
+      !Number.isFinite(incomeExecutionRatio) ||
+      incomeExecutionRatio < 0 ||
+      incomeExecutionRatio > 100
+    ) {
+      setSetupError("소득 대비 실행 비율을 0~100 사이로 입력해 주세요.");
+      executionRatioInputRef.current?.focus();
+      return;
+    }
+    if (
+      debtServiceRatio === "" ||
+      !Number.isFinite(debtServiceRatio) ||
+      debtServiceRatio < 0 ||
+      debtServiceRatio > 100
+    ) {
+      setSetupError("부채비율을 0~100 사이로 입력해 주세요.");
+      debtRatioInputRef.current?.focus();
       return;
     }
     if (debtServiceRatio > incomeExecutionRatio) {
       setSetupError(
         "부채비율은 저축·상환을 합친 소득 대비 실행 비율보다 클 수 없어요.",
       );
-      debtInputRef.current?.focus();
+      debtRatioInputRef.current?.focus();
+      return;
+    }
+
+    const totalAssetsKrw = eokToKrw(totalAssetsEok);
+    const totalDebtKrw = eokToKrw(totalDebtEok);
+    if (
+      !Number.isSafeInteger(totalAssetsKrw) ||
+      !Number.isSafeInteger(totalDebtKrw)
+    ) {
+      setSetupError("자산정보가 입력 가능한 범위를 벗어났어요.");
+      totalAssetsInputRef.current?.focus();
       return;
     }
     if (
       plan &&
       completedCount > 0 &&
       !window.confirm(
-        "조건을 바꾸면 행동 구성이 달라질 수 있어요. 같은 현재 단계와 다음 단계의 같은 행동만 완료 기록을 유지합니다. 계속할까요?",
+        "최신 자산 스냅샷으로 레벨과 행동을 다시 계산합니다. 분류된 현재 레벨과 다음 레벨이 같을 때만 같은 행동의 완료 기록을 유지합니다. 계속할까요?",
       )
     ) {
       return;
@@ -455,7 +415,8 @@ export function WealthCopyApp() {
       const response = await fetch("/api/v2/plan", {
         body: JSON.stringify({
           profile: {
-            currentLevel,
+            totalAssetsKrw,
+            totalDebtKrw,
             incomeExecutionRatio,
             assetPercentileBand,
             debtServiceRatio,
@@ -487,8 +448,25 @@ export function WealthCopyApp() {
         );
       }
 
+      const parsedSourceLevel = assetLevelSchema.safeParse(
+        response.headers.get(WEALTH_SOURCE_LEVEL_HEADER),
+      );
+      if (!parsedSourceLevel.success) {
+        throw new UserFacingPlanError(
+          "현재 자산 레벨을 확인하지 못했어요. 다시 시도해 주세요.",
+        );
+      }
+
+      const sourceLevel = parsedSourceLevel.data;
+      const expectedNextLevel = nextAssetLevel(sourceLevel);
+      if (parsedPlan.data.nextLevel !== expectedNextLevel) {
+        throw new UserFacingPlanError(
+          "자산 레벨과 다음 단계가 일치하지 않아요. 최신 정보로 다시 시도해 주세요.",
+        );
+      }
+
       const previousPlanForTarget =
-        journeySourceLevel === currentLevel &&
+        journeySourceLevel === sourceLevel &&
         plan?.nextLevel === parsedPlan.data.nextLevel
           ? plan
           : null;
@@ -498,16 +476,14 @@ export function WealthCopyApp() {
         parsedPlan.data.actions.map((action) => action.id),
       );
 
-      lastProfileRef.current = {
-        currentLevel,
+      lastActionSignalsRef.current = {
         incomeExecutionRatio,
         assetPercentileBand,
         debtServiceRatio,
       };
-      setJourneyLevelSuggestion(null);
       focusNewPlanRef.current = true;
       setPlan(nextPlan);
-      setJourneySourceLevel(currentLevel);
+      setJourneySourceLevel(sourceLevel);
       setProfile(null);
       setConstraintNote(null);
       setSetupOpen(false);
@@ -556,7 +532,7 @@ export function WealthCopyApp() {
     ).length;
     setStatusMessage(
       nextCompletedCount === 3
-        ? `${actionCopy.title} 완료. 이번 달 행동 세 개를 모두 마쳤어요. ${nextPlan.nextLevel}를 현재 단계 후보로 확인한 뒤 다음 행동을 이어갈 수 있어요.`
+        ? `${actionCopy.title} 완료. 이번 달 행동 세 개를 모두 마쳤어요. 행동 완료만으로 레벨이 오르지는 않아요. 최신 가구 자산정보로 다시 분류해 주세요.`
         : `${actionCopy.title} ${updatedAction?.completed ? "완료" : "완료 취소"}. 세 개 중 ${nextCompletedCount}개 완료했어요.`,
     );
   }
@@ -588,10 +564,10 @@ export function WealthCopyApp() {
     }
 
     window.localStorage.removeItem(PLAN_STORAGE_KEY);
-    window.localStorage.removeItem(PREVIOUS_PLAN_STORAGE_KEY);
-    window.localStorage.removeItem(LEGACY_PLAN_STORAGE_KEY);
-    lastProfileRef.current = null;
-    setJourneyLevelSuggestion(null);
+    DEPRECATED_PLAN_STORAGE_KEYS.forEach((key) =>
+      window.localStorage.removeItem(key),
+    );
+    lastActionSignalsRef.current = null;
     setPlan(null);
     setJourneySourceLevel(null);
     setStatusMessage("이번 달 행동 기록을 지웠어요.");
@@ -617,7 +593,7 @@ export function WealthCopyApp() {
                   {isRestoring
                     ? "불러오는 중"
                     : plan?.progress === 100
-                      ? "다음 단계"
+                      ? "다시 분류"
                       : plan
                         ? "다시 만들기"
                         : "시작하기"}
@@ -626,7 +602,7 @@ export function WealthCopyApp() {
                   {isRestoring
                     ? "행동 불러오는 중"
                     : plan?.progress === 100
-                      ? "다음 단계 이어가기"
+                      ? "최신 자산으로 재분류"
                       : plan
                         ? "행동 다시 복제"
                         : "시작하기"}
@@ -646,25 +622,33 @@ export function WealthCopyApp() {
                 />
                 <div className="relative">
                   <p className="text-xs font-black tracking-[0.16em] text-[#078f93]">
-                    다음 자산 단계
+                    {isMaintenanceLevel ? "자산 유지 단계" : "다음 자산 단계"}
                   </p>
                   <div className="mt-3 flex items-end gap-5 sm:mt-4">
                     <span className="text-[4.75rem] font-black leading-none tracking-[-0.09em] text-[#082a66] sm:text-[7rem]">
                       {nextLevelLabel}
                     </span>
                     <span className="mb-3 rounded-full bg-[#e9f9f8] px-3 py-1.5 text-xs font-extrabold text-[#078f93]">
-                      {plan ? "GOAL" : "선택 전"}
+                      {plan
+                        ? isMaintenanceLevel
+                          ? "L15 유지 단계"
+                          : ASSET_LEVEL_LABELS[plan.nextLevel]
+                        : "분류 전"}
                     </span>
                   </div>
                   <h1 className="mt-5 max-w-xl text-2xl font-black leading-tight tracking-[-0.05em] text-[#10213f] sm:mt-7 sm:text-4xl">
                     {completedCount === 3
                       ? "이번 달 3가지 행동을 완료했습니다."
                       : plan
-                        ? `${plan.nextLevel} 행동을 실행합니다.`
+                        ? isMaintenanceLevel
+                          ? "L15 유지 행동을 실행합니다."
+                          : `${plan.nextLevel} 행동을 실행합니다.`
                         : "다음 자산 단계의 행동을 복제합니다."}
                   </h1>
                   <p className="mt-3 max-w-xl text-base leading-7 text-[#68768c]">
-                    다음 단계로 이어가기 위해 3가지 행동이 필요합니다.
+                    {isMaintenanceLevel
+                      ? "L15 자산 운영을 점검하는 이번 달 행동 3개입니다."
+                      : "다음 단계를 준비하며 이번 달 확인할 3가지 행동입니다."}
                   </p>
                 </div>
               </div>
@@ -819,15 +803,15 @@ export function WealthCopyApp() {
               {plan?.progress === 100 ? (
                 <div className="mt-7 flex flex-col items-start justify-between gap-4 rounded-2xl border border-[#b9dfe0] bg-[#f2fbfa] p-5 sm:flex-row sm:items-center sm:px-6">
                   <p className="text-sm font-bold leading-6 text-[#476579]">
-                    3가지 행동을 완료했어요. {plan.nextLevel}를 현재 단계 후보로
-                    확인한 뒤 다음 전환을 이어가세요.
+                    3가지 행동을 완료했어요. 완료만으로 레벨이 오르지는
+                    않아요. 최신 가구 자산정보로 현재 레벨을 다시 분류하세요.
                   </p>
                   <button
                     className="min-h-12 w-full shrink-0 rounded-xl bg-[#087f83] px-6 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(6,164,168,0.18)] transition hover:bg-[#066f72] sm:w-auto"
                     onClick={openSetup}
                     type="button"
                   >
-                    현재 상태 확인하고 이어가기
+                    최신 자산정보로 다시 분류
                   </button>
                 </div>
               ) : null}
@@ -845,7 +829,7 @@ export function WealthCopyApp() {
                   >
                     {isRestoring
                       ? "행동 불러오는 중…"
-                      : "다음 단계 행동 3개 복제하기"}
+                      : "레벨 분류하고 행동 3개 받기"}
                   </button>
                 </div>
               ) : null}
@@ -894,21 +878,23 @@ export function WealthCopyApp() {
             <div className="flex items-start justify-between gap-5">
               <div>
                 <p className="text-xs font-black tracking-[0.15em] text-[#078f93]">
-                  NEXT ACTION COPY
+                  ASSET SNAPSHOT → ACTION COPY
                 </p>
                 <h2
                   className="mt-2 text-3xl font-black tracking-[-0.045em] text-[#082a66]"
                   id="setup-title"
                 >
-                  30초면 다음 단계 행동을 복제할 수 있어요
+                  가구 자산정보로 다음 행동을 준비해요
                 </h2>
                 <p
                   className="mt-3 max-w-lg text-sm leading-6 text-[#6d7b90]"
                   id="setup-description"
                 >
-                  원화나 달러 금액은 받지 않고, 서로 비교 가능한 비율과 참고
-                  구간만 사용합니다. 이 조건은 행동을 만든 뒤 화면에 남지
-                  않습니다. 이름·연락처·계좌정보도 입력하지 마세요.
+                  총자산과 총부채로 현재 레벨을 내부에서 분류한 뒤, 다음
+                  레벨을 준비하는 행동 3개만 보여드려요. 입력 금액은 이번
+                  요청의 단계 계산에만 사용하고 저장하지 않으며 OpenAI
+                  모델에도 전달하지 않습니다. 계산된 레벨과 행동 완료
+                  기록만 이 기기에 저장합니다.
                 </p>
               </div>
               <button
@@ -923,224 +909,259 @@ export function WealthCopyApp() {
 
             <form className="mt-7" onSubmit={handleCreatePlan}>
               <fieldset disabled={isPreparing}>
-                <legend className="sr-only">행동 생성에 사용할 현재 조건</legend>
-                <label className="block rounded-2xl border border-[#dbe6ee] bg-[#f7fbfc] p-4 text-sm font-extrabold text-[#31415d] sm:grid sm:grid-cols-[minmax(0,1fr)_15rem] sm:items-center sm:gap-6 sm:p-5">
-                  <span>
-                    현재 자산 단계
-                    <span className="ml-1 font-normal text-[#8995a8]">
-                      (직접 선택)
-                    </span>
-                    <span
-                      className="mt-1.5 block text-xs font-normal leading-5 text-[#7a879b]"
-                      id="current-level-help"
-                    >
-                      자산 규모를 인증한 등급이 아니라, 지금까지 완료한 실행
-                      기준을 표시하는 WealthCopy 여정 단계예요. 현재 상태와
-                      가장 가까운 단계를 골라 주세요.
-                      {suggestedCurrentLevel ? (
-                        <strong className="mt-1 block font-extrabold text-[#087f83]">
-                          지난 행동을 모두 완료해 {suggestedCurrentLevel}를 현재
-                          단계 후보로 불러왔어요. 실제 상태와 다르면 바꾸세요.
-                        </strong>
-                      ) : null}
-                    </span>
-                  </span>
-                  <select
-                    aria-describedby="current-level-help"
-                    aria-invalid={
-                      profile.currentLevel === "" && Boolean(setupError)
-                    }
-                    className={`${inputClass} sm:mt-0`}
-                    onChange={(event) =>
-                      updateProfile({
-                        currentLevel: event.target.value as AssetLevel | "",
-                      })
-                    }
-                    ref={levelInputRef}
-                    required
-                    value={profile.currentLevel}
-                  >
-                    <option value="">현재 단계 선택</option>
-                    {ASSET_LEVELS.map((level) => (
-                      <option key={level} value={level}>
-                        {level} · {WEALTH_JOURNEY_LABELS[level]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <legend className="sr-only">
+                  자산 레벨 분류와 행동 생성에 사용할 현재 조건
+                </legend>
 
-                <div className="mt-5 grid gap-5 md:grid-cols-3">
-                  <label className="text-sm font-extrabold text-[#31415d]">
-                    소득 대비 실행 비율
-                    <span className="ml-1 font-normal text-[#8995a8]">
-                      (%)
-                    </span>
-                    <input
-                      aria-describedby="execution-ratio-help"
-                      className={inputClass}
-                      max="100"
-                      min="0"
-                      onChange={(event) =>
-                        updateProfile({
-                          incomeExecutionRatio:
-                            event.target.value === ""
-                              ? ""
-                              : Number(event.target.value),
-                        })
-                      }
-                      ref={firstInputRef}
-                      required
-                      step="1"
-                      type="number"
-                      value={profile.incomeExecutionRatio}
-                    />
-                    <span
-                      className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
-                      id="execution-ratio-help"
-                    >
-                      월소득 중 저축·상환에 배정할 비중
-                    </span>
-                  </label>
-                  <label className="text-sm font-extrabold text-[#31415d]">
-                    자가 선택 자산 참고 구간
-                    <span className="ml-1 font-normal text-[#8995a8]">
-                      (선택)
-                    </span>
-                    <select
-                      aria-describedby="asset-percentile-help"
-                      className={inputClass}
-                      onChange={(event) =>
-                        updateProfile({
-                          assetPercentileBand: event.target
-                            .value as PsidAssetPercentileBand,
-                        })
-                      }
-                      value={profile.assetPercentileBand}
-                    >
-                      <option value="unknown">잘 모르겠어요</option>
-                      <option value="below_25">참조 분포 · 25백분위 미만</option>
-                      <option value="p25_49">참조 분포 · 25–49백분위</option>
-                      <option value="p50_74">참조 분포 · 50–74백분위</option>
-                      <option value="p75_89">참조 분포 · 75–89백분위</option>
-                      <option value="p90_plus">참조 분포 · 90백분위 이상</option>
-                    </select>
-                    <span
-                      className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
-                      id="asset-percentile-help"
-                    >
-                      잘 모르면 건너뛰세요. 선택형 참고 신호일 뿐이에요.
-                    </span>
-                  </label>
-                  <label className="text-sm font-extrabold text-[#31415d]">
-                    부채비율
-                    <span className="ml-1 font-normal text-[#8995a8]">
-                      (%)
-                    </span>
-                    <input
-                      aria-describedby="debt-ratio-help"
-                      className={inputClass}
-                      max="100"
-                      min="0"
-                      onChange={(event) =>
-                        updateProfile({
-                          debtServiceRatio:
-                            event.target.value === ""
-                              ? ""
-                              : Number(event.target.value),
-                        })
-                      }
-                      ref={debtInputRef}
-                      required
-                      step="1"
-                      type="number"
-                      value={profile.debtServiceRatio}
-                    />
-                    <span
-                      className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
-                      id="debt-ratio-help"
-                    >
-                      월 부채 상환액 ÷ 월소득
-                    </span>
-                  </label>
-                </div>
-
-                <div
-                  aria-label="입력한 네 가지 조건"
-                  className="mt-6 grid gap-3 rounded-2xl bg-[#f2f8fb] p-4 sm:grid-cols-2 lg:grid-cols-4"
-                >
-                  {[
-                    [
-                      "자산 단계",
-                      profile.currentLevel === ""
-                        ? "선택 필요"
-                        : `${profile.currentLevel} · ${WEALTH_JOURNEY_LABELS[profile.currentLevel]}`,
-                    ],
-                    [
-                      "소득 대비",
-                      profile.incomeExecutionRatio === ""
-                        ? "입력 필요"
-                        : `${profile.incomeExecutionRatio}%`,
-                    ],
-                    [
-                      "참고 구간",
-                      ASSET_PERCENTILE_LABELS[profile.assetPercentileBand],
-                    ],
-                    [
-                      "부채비율",
-                      profile.debtServiceRatio === ""
-                        ? "입력 필요"
-                        : `${profile.debtServiceRatio}%`,
-                    ],
-                  ].map(([label, value]) => (
-                    <div
-                      className="rounded-xl border border-white bg-white/80 px-4 py-3"
-                      key={label}
-                    >
-                      <span className="block text-[11px] font-bold text-[#8491a3]">
-                        {label}
-                      </span>
-                      <strong className="mt-1 block text-base text-[#082a66]">
-                        {value}
-                      </strong>
-                    </div>
-                  ))}
-                </div>
-
-                <details
-                  className="mt-4 rounded-2xl border border-[#dce6ee] bg-[#fbfcfe] px-4 py-3 text-sm text-[#66758a]"
-                  id="psid-reference-note"
-                >
-                  <summary className="cursor-pointer font-extrabold text-[#35506d]">
-                    PSID 참고 구간 안내
-                  </summary>
-                  <p className="mt-2 leading-6">
-                    공개된 2019 PSID 순자산 분포 표의 25·50·75·90백분위
-                    경계만 참고합니다. 한국 내 실제 자산 순위나 WealthCopy
-                    자산 단계 도달 가능성을 뜻하지 않습니다.
+                <section className="rounded-2xl border border-[#cfe1e7] bg-[#f5fbfb] p-5 sm:p-6">
+                  <p className="text-[11px] font-black tracking-[0.14em] text-[#078f93]">
+                    STEP 1 · ASSET SNAPSHOT
                   </p>
-                </details>
+                  <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-[#173253]">
+                    지금의 가구 순자산을 알려주세요
+                  </h3>
+                  <p className="mt-2 text-xs leading-5 text-[#708095]">
+                    순자산은 가구 기준 총자산에서 총부채를 뺀 값입니다. 정확한
+                    감정가가 아니어도 현재 알고 있는 범위의 추정값이면 돼요.
+                  </p>
 
-                <details className="mt-4 rounded-2xl border border-[#dce6ee] px-4 py-3">
-                  <summary className="cursor-pointer text-sm font-extrabold text-[#35506d]">
-                    이번 달 변화 추가
-                    <span className="ml-1 font-normal text-[#8995a8]">
-                      (선택)
+                  {plan?.progress === 100 ? (
+                    <p className="mt-4 rounded-xl border border-[#b9dfe0] bg-white px-4 py-3 text-xs font-bold leading-5 text-[#087f83]">
+                      행동 완료만으로 레벨이 오르지는 않아요. 아래 값을 최신
+                      상태로 확인해 제출하면 현재 레벨을 처음부터 다시
+                      분류합니다.
+                    </p>
+                  ) : null}
+
+                  <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                    <label className="text-sm font-extrabold text-[#31415d]">
+                      가구 기준 총자산
+                      <span className="ml-1 font-normal text-[#8995a8]">
+                        (억원)
+                      </span>
+                      <input
+                        aria-describedby="total-assets-help"
+                        className={inputClass}
+                        inputMode="decimal"
+                        max={MAX_EOK_INPUT}
+                        min="0"
+                        onChange={(event) =>
+                          updateProfile({
+                            totalAssetsEok:
+                              event.target.value === ""
+                                ? ""
+                                : Number(event.target.value),
+                          })
+                        }
+                        placeholder="예: 3.5"
+                        ref={totalAssetsInputRef}
+                        required
+                        step="0.01"
+                        type="number"
+                        value={profile.totalAssetsEok}
+                      />
+                      <span
+                        className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
+                        id="total-assets-help"
+                      >
+                        예금·투자자산·부동산 등 가구가 보유한 자산의 현재 추정
+                        합계예요. 3.5는 3억 5천만원입니다.
+                      </span>
+                    </label>
+
+                    <label className="text-sm font-extrabold text-[#31415d]">
+                      가구 기준 총부채
+                      <span className="ml-1 font-normal text-[#8995a8]">
+                        (억원)
+                      </span>
+                      <input
+                        aria-describedby="total-debt-help"
+                        className={inputClass}
+                        inputMode="decimal"
+                        max={MAX_EOK_INPUT}
+                        min="0"
+                        onChange={(event) =>
+                          updateProfile({
+                            totalDebtEok:
+                              event.target.value === ""
+                                ? ""
+                                : Number(event.target.value),
+                          })
+                        }
+                        placeholder="없으면 0"
+                        ref={totalDebtInputRef}
+                        required
+                        step="0.01"
+                        type="number"
+                        value={profile.totalDebtEok}
+                      />
+                      <span
+                        className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
+                        id="total-debt-help"
+                      >
+                        주택담보·신용·기타 대출 등 가구가 갚아야 할 부채의 현재
+                        추정 합계예요.
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="mt-5 flex flex-col gap-2 rounded-xl bg-[#082a66] px-4 py-3 text-white sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-xs font-bold text-white/70">
+                      현재 레벨
                     </span>
-                  </summary>
-                  <label className="mt-3 block text-sm font-extrabold text-[#31415d]">
-                    이름·연락처·계좌·금액 없이 상황만 적어 주세요
-                    <textarea
-                      className="mt-2 min-h-24 w-full resize-none rounded-2xl border border-[#d8e3ee] bg-white px-4 py-3 text-[15px] font-semibold leading-6 text-[#10213f] outline-none transition placeholder:font-normal placeholder:text-[#9aa7b9] focus:border-[#06a4a8] focus:ring-4 focus:ring-[#06a4a8]/10"
-                      maxLength={500}
-                      onChange={(event) => {
-                        setConstraintNote(event.target.value);
-                        setSetupError(null);
-                      }}
-                      placeholder="예: 내년에 이사 계획이 있어 현금 여유를 유지하고 싶어요."
-                      value={constraintNote}
-                    />
-                  </label>
-                </details>
+                    <strong className="text-sm">
+                      제출 후 순자산 기준으로 자동 분류 · L1–L15
+                    </strong>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-[#708095]">
+                    L15는 순자산 1조원 이상 자산군입니다. 계좌번호나 상품별
+                    상세정보는 입력하지 마세요.
+                  </p>
+                </section>
+
+                <section className="mt-5 rounded-2xl border border-[#dbe6ee] bg-white p-5 sm:p-6">
+                  <p className="text-[11px] font-black tracking-[0.14em] text-[#078f93]">
+                    STEP 2 · ACTION SIGNALS
+                  </p>
+                  <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-[#173253]">
+                    실행 여건에 맞게 행동을 조정해요
+                  </h3>
+                  <p className="mt-2 text-xs leading-5 text-[#708095]">
+                    금액이 아닌 비율과 선택형 참고 구간으로 이번 달 행동
+                    구성을 조정합니다.
+                  </p>
+
+                  <div className="mt-5 grid gap-5 md:grid-cols-3">
+                    <label className="text-sm font-extrabold text-[#31415d]">
+                      소득 대비 실행 비율
+                      <span className="ml-1 font-normal text-[#8995a8]">
+                        (%)
+                      </span>
+                      <input
+                        aria-describedby="execution-ratio-help"
+                        className={inputClass}
+                        max="100"
+                        min="0"
+                        onChange={(event) =>
+                          updateProfile({
+                            incomeExecutionRatio:
+                              event.target.value === ""
+                                ? ""
+                                : Number(event.target.value),
+                          })
+                        }
+                        ref={executionRatioInputRef}
+                        required
+                        step="1"
+                        type="number"
+                        value={profile.incomeExecutionRatio}
+                      />
+                      <span
+                        className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
+                        id="execution-ratio-help"
+                      >
+                        월소득 중 저축·상환에 배정할 비중
+                      </span>
+                    </label>
+                    <label className="text-sm font-extrabold text-[#31415d]">
+                      자가 선택 자산 참고 구간
+                      <span className="ml-1 font-normal text-[#8995a8]">
+                        (선택)
+                      </span>
+                      <select
+                        aria-describedby="asset-percentile-help"
+                        className={inputClass}
+                        onChange={(event) =>
+                          updateProfile({
+                            assetPercentileBand: event.target
+                              .value as PsidAssetPercentileBand,
+                          })
+                        }
+                        value={profile.assetPercentileBand}
+                      >
+                        <option value="unknown">잘 모르겠어요</option>
+                        <option value="below_25">참조 분포 · 25백분위 미만</option>
+                        <option value="p25_49">참조 분포 · 25–49백분위</option>
+                        <option value="p50_74">참조 분포 · 50–74백분위</option>
+                        <option value="p75_89">참조 분포 · 75–89백분위</option>
+                        <option value="p90_plus">참조 분포 · 90백분위 이상</option>
+                      </select>
+                      <span
+                        className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
+                        id="asset-percentile-help"
+                      >
+                        잘 모르면 건너뛰세요. 선택형 참고 신호일 뿐이에요.
+                      </span>
+                    </label>
+                    <label className="text-sm font-extrabold text-[#31415d]">
+                      부채비율
+                      <span className="ml-1 font-normal text-[#8995a8]">
+                        (%)
+                      </span>
+                      <input
+                        aria-describedby="debt-ratio-help"
+                        className={inputClass}
+                        max="100"
+                        min="0"
+                        onChange={(event) =>
+                          updateProfile({
+                            debtServiceRatio:
+                              event.target.value === ""
+                                ? ""
+                                : Number(event.target.value),
+                          })
+                        }
+                        ref={debtRatioInputRef}
+                        required
+                        step="1"
+                        type="number"
+                        value={profile.debtServiceRatio}
+                      />
+                      <span
+                        className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
+                        id="debt-ratio-help"
+                      >
+                        월 부채 상환액 ÷ 월소득
+                      </span>
+                    </label>
+                  </div>
+
+                  <details
+                    className="mt-4 rounded-2xl border border-[#dce6ee] bg-[#fbfcfe] px-4 py-3 text-sm text-[#66758a]"
+                    id="psid-reference-note"
+                  >
+                    <summary className="cursor-pointer font-extrabold text-[#35506d]">
+                      PSID 참고 구간 안내
+                    </summary>
+                    <p className="mt-2 leading-6">
+                      공개된 2019 PSID 가구 순자산 분포 표의
+                      25·50·75·90백분위 경계만 참고합니다. 한국 자산 백분위가
+                      아니며 L1–L15 계산에는 사용하지 않습니다.
+                    </p>
+                  </details>
+
+                  <details className="mt-4 rounded-2xl border border-[#dce6ee] px-4 py-3">
+                    <summary className="cursor-pointer text-sm font-extrabold text-[#35506d]">
+                      이번 달 변화 추가
+                      <span className="ml-1 font-normal text-[#8995a8]">
+                        (선택)
+                      </span>
+                    </summary>
+                    <label className="mt-3 block text-sm font-extrabold text-[#31415d]">
+                      이름·연락처·계좌·금액 없이 상황만 적어 주세요
+                      <textarea
+                        className="mt-2 min-h-24 w-full resize-none rounded-2xl border border-[#d8e3ee] bg-white px-4 py-3 text-[15px] font-semibold leading-6 text-[#10213f] outline-none transition placeholder:font-normal placeholder:text-[#9aa7b9] focus:border-[#06a4a8] focus:ring-4 focus:ring-[#06a4a8]/10"
+                        maxLength={500}
+                        onChange={(event) => {
+                          setConstraintNote(event.target.value);
+                          setSetupError(null);
+                        }}
+                        placeholder="예: 내년에 이사 계획이 있어 현금 여유를 유지하고 싶어요."
+                        value={constraintNote}
+                      />
+                    </label>
+                  </details>
+                </section>
               </fieldset>
 
               {setupError ? (
@@ -1167,8 +1188,8 @@ export function WealthCopyApp() {
                   type="submit"
                 >
                   {isPreparing
-                    ? "행동 복제 중…"
-                    : "이 조건으로 다음 단계 행동 3개 복제"}
+                    ? "레벨 분류와 행동 준비 중…"
+                    : "레벨 분류하고 행동 3개 복제"}
                 </button>
               </div>
             </form>

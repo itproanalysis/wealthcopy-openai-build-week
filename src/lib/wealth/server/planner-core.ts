@@ -1,8 +1,12 @@
 import { z } from "zod";
 
-import type { NextAssetLevel } from "../asset-level";
-import { matchWealthPaths, wealthProfileSchema } from "../engine";
+import type { AssetLevel, NextAssetLevel } from "../asset-level";
+import { matchWealthPaths } from "../engine";
 import { levelTransitionFor } from "../level-transitions";
+import {
+  collectedWealthProfileSchema,
+  toNormalizedProfile,
+} from "../normalized-profile";
 import {
   projectPublicPlan,
   publicActionIdSchema,
@@ -13,6 +17,7 @@ import {
   psidAssetPositionSignal,
   type PsidAssetPositionSignal,
 } from "./psid-reference";
+import { classifyAssetLevel } from "./asset-level-policy";
 
 const likelySensitiveDataPattern =
   /(?:[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|01[016789][ -]?\d{3,4}[ -]?\d{4}|\d{6}[ -]?\d{7}|(?:계좌|은행).{0,20}\d[\d -]{8,}\d)/i;
@@ -34,7 +39,7 @@ const liquidityNeedPattern =
 
 export const planRequestSchema = z
   .object({
-    profile: wealthProfileSchema,
+    profile: collectedWealthProfileSchema,
     constraintNote: z
       .string()
       .trim()
@@ -92,10 +97,6 @@ type PlanningStatus = "ready" | "recheck" | "professional_review";
 type ModelInput = {
   allowedRoutineActionIds: readonly PublicActionId[];
   locale: "ko-KR";
-  levelTransition: {
-    currentLevel: PlanRequest["profile"]["currentLevel"];
-    nextLevel: NextAssetLevel;
-  };
   profileSignals: {
     incomeExecution: "limited" | "steady" | "strong";
     assetPosition: PsidAssetPositionSignal;
@@ -114,7 +115,9 @@ export type PlanningContext = {
   modelAllowedActionIds: readonly PublicActionId[];
   modelInput: ModelInput;
   paceActionIds: readonly PublicActionId[];
+  sourceLevel: AssetLevel;
   status: PlanningStatus;
+  nextLevel: NextAssetLevel;
   transitionActionIds: readonly PublicActionId[];
 };
 
@@ -216,9 +219,11 @@ function collectConstraintSignals(
 
 export function createPlanningContext(request: PlanRequest): PlanningContext {
   const parsed = planRequestSchema.parse(request);
-  const paths = matchWealthPaths(parsed.profile);
+  const sourceLevel = classifyAssetLevel(parsed.profile);
+  const normalizedProfile = toNormalizedProfile(parsed.profile);
+  const paths = matchWealthPaths(normalizedProfile);
   const leadPath = paths.find((path) => path.recommended) ?? paths[0];
-  const transition = levelTransitionFor(parsed.profile.currentLevel);
+  const transition = levelTransitionFor(sourceLevel);
 
   let status: PlanningStatus = "ready";
   if (professionalReviewPattern.test(parsed.constraintNote)) {
@@ -273,10 +278,6 @@ export function createPlanningContext(request: PlanRequest): PlanningContext {
   const modelInput: ModelInput = {
     allowedRoutineActionIds: modelAllowedActionIds,
     locale: "ko-KR",
-    levelTransition: {
-      currentLevel: transition.currentLevel,
-      nextLevel: transition.nextLevel,
-    },
     profileSignals: {
       incomeExecution: incomeExecutionBand(
         parsed.profile.incomeExecutionRatio,
@@ -306,7 +307,9 @@ export function createPlanningContext(request: PlanRequest): PlanningContext {
     mandatoryActionIds,
     modelAllowedActionIds,
     modelInput,
+    nextLevel: transition.nextLevel,
     paceActionIds,
+    sourceLevel,
     status,
     transitionActionIds,
   };
@@ -320,7 +323,7 @@ export function mergeModelSelection(
   if (!selection.success || !context.allowModel) return context.fallback;
 
   return projectPublicPlan(
-    context.modelInput.levelTransition.nextLevel,
+    context.nextLevel,
     selectThreeActions(context, selection.data.actionIds),
   );
 }

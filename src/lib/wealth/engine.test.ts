@@ -14,7 +14,6 @@ import {
 import { publicActionIdSchema } from "./public-plan";
 
 const balancedProfile: WealthProfile = {
-  currentLevel: "L6",
   incomeExecutionRatio: 35,
   assetPercentileBand: "p50_74",
   debtServiceRatio: 18,
@@ -30,13 +29,17 @@ describe("wealthProfileSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts every supported current asset level", () => {
-    for (const currentLevel of ["L1", "L2", "L3", "L4", "L5", "L6", "L7"] as const) {
-      expect(
-        wealthProfileSchema.safeParse({ ...balancedProfile, currentLevel })
-          .success,
-      ).toBe(true);
-    }
+  it("rejects raw household amounts and client level fields", () => {
+    expect(
+      wealthProfileSchema.safeParse({
+        ...balancedProfile,
+        totalAssetsKrw: 450_000_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      wealthProfileSchema.safeParse({ ...balancedProfile, currentLevel: "L6" })
+        .success,
+    ).toBe(false);
   });
 });
 

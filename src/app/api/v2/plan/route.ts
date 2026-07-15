@@ -17,6 +17,10 @@ import {
   MissingOpenAIKeyError,
 } from "@/lib/openai";
 import { publicPlanSchema } from "@/lib/wealth/public-plan";
+import {
+  WEALTH_SOURCE_LEVEL_HEADER,
+  type AssetLevel,
+} from "@/lib/wealth/asset-level";
 
 export const runtime = "nodejs";
 
@@ -83,8 +87,18 @@ function jsonNoStore(value: unknown, init?: ResponseInit) {
   });
 }
 
-function publicPlanResponse(value: unknown, init?: ResponseInit) {
-  return jsonNoStore(publicPlanSchema.parse(value), init);
+function publicPlanResponse(
+  value: unknown,
+  sourceLevel: AssetLevel,
+  init?: ResponseInit,
+) {
+  const headers = new Headers(init?.headers);
+  headers.set(WEALTH_SOURCE_LEVEL_HEADER, sourceLevel);
+
+  return jsonNoStore(publicPlanSchema.parse(value), {
+    ...init,
+    headers,
+  });
 }
 
 export async function POST(request: Request) {
@@ -120,7 +134,7 @@ export async function POST(request: Request) {
 
   const context = createPlanningContext(parsed.data);
   if (!context.allowModel) {
-    return publicPlanResponse(context.fallback);
+    return publicPlanResponse(context.fallback, context.sourceLevel);
   }
 
   const safetyIdentifier = anonymousSafetyIdentifier(parsed.data.sessionId);
@@ -136,7 +150,7 @@ export async function POST(request: Request) {
       ipLimit.retryAfterSeconds,
       sessionLimit.retryAfterSeconds,
     );
-    return publicPlanResponse(context.fallback, {
+    return publicPlanResponse(context.fallback, context.sourceLevel, {
       headers: { "Retry-After": String(retryAfterSeconds) },
     });
   }
@@ -160,6 +174,7 @@ export async function POST(request: Request) {
 
     return publicPlanResponse(
       mergeModelSelection(context, response.output_parsed),
+      context.sourceLevel,
     );
   } catch (error) {
     if (error instanceof OpenAI.APIError) {
@@ -171,6 +186,6 @@ export async function POST(request: Request) {
       console.error("Unexpected action selection error", error);
     }
 
-    return publicPlanResponse(context.fallback);
+    return publicPlanResponse(context.fallback, context.sourceLevel);
   }
 }

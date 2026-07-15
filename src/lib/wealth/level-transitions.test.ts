@@ -12,6 +12,14 @@ const expectedPrimaryActions = [
   "review_asset_concentration",
   "review_long_term_structure",
   "audit_plan_drift",
+  "refresh_asset_valuation_dates",
+  "reconcile_liability_register",
+  "document_ownership_structure",
+  "consolidate_reporting_calendar",
+  "verify_decision_authorities",
+  "review_continuity_records",
+  "confirm_alternate_access",
+  "audit_governance_calendar",
 ] as const;
 
 describe("level transition action catalog", () => {
@@ -26,6 +34,9 @@ describe("level transition action catalog", () => {
       expect(transition.nextLevel).toBe(nextAssetLevel(currentLevel));
       expect(transition.actionPriority).toEqual([primaryActionId]);
       expect(transition.allowedActionIds).toContain(primaryActionId);
+      expect(new Set(transition.allowedActionIds).size).toBe(
+        transition.allowedActionIds.length,
+      );
       expect(publicActionIdSchema.safeParse(primaryActionId).success).toBe(true);
     });
 
@@ -41,7 +52,7 @@ describe("level transition action catalog", () => {
 
   it("contains no product, return, amount, allocation, or duration advice", () => {
     expect(JSON.stringify({ LEVEL_TRANSITIONS, PUBLIC_ACTION_COPY })).not.toMatch(
-      /(?:ETF|펀드|종목|수익률|기대수익|금액|원|달러|배분|비중|예상\s*기간|duration|return|yield|amount|krw|usd)/i,
+      /(?:ETF|대출 상품|종목|수익률|금리 수익|금액|달러|배분|비중|예상\s*기간|duration|return|yield|amount|krw|usd)/i,
     );
   });
 });

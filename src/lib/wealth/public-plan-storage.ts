@@ -18,12 +18,12 @@ export const DEFAULT_PUBLIC_ACTION_IDS: readonly PublicActionId[] = [
   "schedule_monthly_checkin",
 ];
 
-const storedPlanV3Schema = z
+const storedPlanV4Schema = z
   .object({
     monthKey: z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/),
     plan: publicPlanSchema,
     sourceLevel: assetLevelSchema,
-    version: z.literal(3),
+    version: z.literal(4),
   })
   .strict()
   .refine(
@@ -34,31 +34,17 @@ const storedPlanV3Schema = z
     },
   );
 
-const storedPlanV2Schema = z
-  .object({
-    monthKey: z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/),
-    plan: publicPlanSchema,
-    version: z.literal(2),
-  })
-  .strict()
-  .refine((record) => record.plan.nextLevel === "L7", {
-    message: "Version 2 records must use the historical fixed L7 target.",
-    path: ["plan", "nextLevel"],
-  });
-
-export const LEGACY_FIXED_TARGET_SOURCE_LEVEL: AssetLevel = "L6";
-
 export function serializeStoredPlan(
   monthKey: string,
   sourceLevel: AssetLevel,
   plan: PublicPlan,
 ) {
   return JSON.stringify(
-    storedPlanV3Schema.parse({
+    storedPlanV4Schema.parse({
       monthKey,
       plan,
       sourceLevel,
-      version: 3,
+      version: 4,
     }),
   );
 }
@@ -104,7 +90,7 @@ function parseStoredRecord<T>(
 }
 
 export function restoreStoredPlan(raw: string | null, currentMonth: string) {
-  const record = parseStoredRecord(raw, storedPlanV3Schema);
+  const record = parseStoredRecord(raw, storedPlanV4Schema);
   if (!record) return null;
 
   return restoreRecord(
@@ -115,62 +101,7 @@ export function restoreStoredPlan(raw: string | null, currentMonth: string) {
   );
 }
 
-export function migrateStoredPlanV2(
-  raw: string | null,
-  currentMonth: string,
-) {
-  const record = parseStoredRecord(raw, storedPlanV2Schema);
-  if (!record) return null;
-
-  return restoreRecord(
-    LEGACY_FIXED_TARGET_SOURCE_LEVEL,
-    record.plan,
-    record.monthKey,
-    currentMonth,
-  );
-}
-
 export function parseStoredPlan(raw: string | null, currentMonth: string) {
-  return restoreStoredPlan(raw, currentMonth)?.plan ?? null;
-}
-
-export function migrateLegacyPlan(raw: string | null) {
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw) as { taskState?: unknown };
-    if (!Array.isArray(parsed.taskState)) return null;
-
-    const completedLegacyIds = new Set(
-      parsed.taskState
-        .filter(
-          (item): item is { done: true; id: string } =>
-            typeof item === "object" &&
-            item !== null &&
-            "done" in item &&
-            item.done === true &&
-            "id" in item &&
-            typeof item.id === "string",
-        )
-        .map((item) => item.id),
-    );
-
-    const completedIds = new Set<PublicActionId>();
-    if (completedLegacyIds.has("cash-buffer")) {
-      completedIds.add("review_cash_buffer");
-    }
-    if (
-      completedLegacyIds.has("debt-review") &&
-      completedLegacyIds.has("commitment")
-    ) {
-      completedIds.add("confirm_monthly_limit");
-    }
-    if (completedLegacyIds.has("monthly-checkin")) {
-      completedIds.add("schedule_monthly_checkin");
-    }
-
-    return projectPublicPlan("L7", DEFAULT_PUBLIC_ACTION_IDS, completedIds);
-  } catch {
-    return null;
-  }
+  const restored = restoreStoredPlan(raw, currentMonth);
+  return restored && !restored.rolledOver ? restored.plan : null;
 }

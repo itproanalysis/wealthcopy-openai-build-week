@@ -2,25 +2,62 @@
 
 ## Mission
 
-Treat asset management as an action problem. The Build Week outcome is a simple monthly surface showing only the next sequential WealthCopy level, exactly three actions, and action-completion progress. `L7` is one example and the maintained top stage, not a globally fixed target.
+Treat asset management as an action problem. Classify the household's current WealthCopy level from aggregate net worth, then keep the monthly public surface limited to the next sequential level, exactly three actions, and action-completion progress.
 
 ## Non-negotiable public surface
 
-- The main screen shows the computed next level (`L2` through `L7`), exactly three checkable actions, and progress. Before setup, use a neutral `NEXT` state rather than assuming a level.
-- `L1 → L2` through `L6 → L7` and `L7 → L7` maintenance must all have reviewed action paths.
+- Before setup, show a neutral `NEXT` state. After classification, show only the computed next level (`L2` through `L15`), exactly three checkable actions, and progress.
+- `L1 → L2` through `L14 → L15` and `L15 → L15` maintenance must all have reviewed action paths.
 - Progress means completed actions only: 0 actions = `0`, 1 = `33`, 2 = `67`, 3 = `100`.
-- Never describe progress as asset growth, return, level attainment, time saved, or distance remaining.
-- Do not expose path cards, comparison tables, recommendations, fit, tradeoffs, amounts, durations, difficulty, scores, model names, fallback sources, or internal errors.
-- Keep setup inputs in the transient setup dialog; do not repeat them on the main surface.
-- Setup has one user-selected WealthCopy current level plus three structured financial inputs: income-execution percentage, a user-selected PSID reference percentile band, and monthly debt-service-to-income percentage. It may also send an optional constraint note and anonymous session UUID. Do not add structured currency amount fields.
-- Use these meaningful self-selected journey labels consistently: `L1 시작`, `L2 흐름 정리`, `L3 현금 안전망`, `L4 납부 안정`, `L5 월 실행`, `L6 자산 구조`, `L7 장기 유지`.
-- Describe levels as product-owned action stages, never official wealth grades, Korean percentiles, or PSID-derived classifications.
-- Debt service is part of the combined execution percentage, so preserve `debtServiceRatio <= incomeExecutionRatio` in both UI and server validation.
-- Use action-first copy such as `분석은 줄이고, 행동은 세 개로.` Avoid `성공 경로`, `검증된 경로`, `추천`, `최적`, `예상 도달`, and `수익`.
+- Never describe progress as asset growth, return, level attainment, automatic promotion, time saved, or distance remaining.
+- Use copy such as `다음 단계를 준비하며 이번 달 확인할 3가지 행동입니다.` Never claim that checking actions causes a net-worth threshold to be crossed.
+- For `L15`, describe the result as a maintenance stage rather than another higher target.
+- Do not expose path cards, comparisons, recommendations, fit, tradeoffs, amounts, durations, scores, model names, fallback sources, or internal errors on the main surface.
+- Keep aggregate amounts and ratios inside the transient setup flow. Do not repeat them on the main surface.
+- Use the centralized neutral labels in `src/lib/wealth/asset-level.ts`; do not introduce investment, return, succession, official-grade, or amount-bearing labels.
+- Preserve 44px touch targets, native checkboxes, `<fieldset>`, `<legend>`, `<progress max={3}>`, visible completion text and a polite live region.
+
+## Household net-worth classification
+
+- The server-owned policy is `krw-net-worth-v1` in `src/lib/wealth/server/asset-level-policy.ts`.
+- Calculate `household net worth = totalAssetsKrw - totalDebtKrw`.
+- Treat `totalAssetsKrw` and `totalDebtKrw` as non-negative safe integers. Household net worth may be negative.
+- Every lower bound is inclusive and every upper bound is exclusive.
+
+| Level | Household net worth |
+| --- | ---: |
+| `L1` | below KRW 0 |
+| `L2` | KRW 0 to below KRW 10 million |
+| `L3` | KRW 10 million to below KRW 30 million |
+| `L4` | KRW 30 million to below KRW 100 million |
+| `L5` | KRW 100 million to below KRW 300 million |
+| `L6` | KRW 300 million to below KRW 500 million |
+| `L7` | KRW 500 million to below KRW 1 billion |
+| `L8` | KRW 1 billion to below KRW 3 billion |
+| `L9` | KRW 3 billion to below KRW 5 billion |
+| `L10` | KRW 5 billion to below KRW 10 billion |
+| `L11` | KRW 10 billion to below KRW 30 billion |
+| `L12` | KRW 30 billion to below KRW 100 billion |
+| `L13` | KRW 100 billion to below KRW 300 billion |
+| `L14` | KRW 300 billion to below KRW 1 trillion |
+| `L15` | KRW 1 trillion or more |
+
+- These are WealthCopy-owned product bands, not official wealth grades, Korean percentiles, credit grades, forecasts, or PSID-derived classifications.
+- Never alter these cutoffs without a new level-policy version, boundary tests and a storage migration.
+- A `3/3` plan never proves a threshold was crossed. Reclassify from a fresh household snapshot each month.
+
+## Setup and request boundary
+
+- The structured profile accepts `totalAssetsKrw`, `totalDebtKrw`, `incomeExecutionRatio`, optional `assetPercentileBand`, and `debtServiceRatio`.
+- Do not accept a client-supplied current level. Derive it from the two aggregate amounts.
+- Debt service is part of the combined execution ratio, so preserve `debtServiceRatio <= incomeExecutionRatio` in client and server validation.
+- The optional note may contain an allowlisted situation but must reject common currency forms and likely contact or account data.
+- Exact household amounts exist only long enough to classify the level. Never send them to OpenAI, return them, persist them, place them in an ICS file, or include them in logs or telemetry.
+- Use `Cache-Control: no-store` for API responses and `store: false` for model calls.
 
 ## Public API contract
 
-The successful `POST /api/v2/plan` response has exactly these top-level fields:
+The successful `POST /api/v2/plan` response body has exactly these top-level fields:
 
 ```ts
 {
@@ -30,56 +67,60 @@ The successful `POST /api/v2/plan` response has exactly these top-level fields:
 }
 ```
 
+- `NextAssetLevel` is `L2` through `L15`; a classified `L15` maps to `L15` maintenance.
+- Return the server-derived source level only in the `X-WealthCopy-Source-Level` response header so the client can verify that `nextLevel` is sequential. Keep it out of the JSON body and apply `Cache-Control: no-store` to the whole response.
 - Each action object has exactly `id` and `completed`.
-- Require three unique allowlisted action IDs.
-- Derive progress deterministically from the completed count. The model never controls it.
-- Keep localized titles and descriptions in reviewed client-owned static copy.
-- Never add `paths`, `assessment`, `model`, `source`, explanation, amount, duration, score, or recommendation fields to a successful public response.
-- Validate the final projection with a strict Zod schema before returning or storing it.
-- Require `profile.currentLevel` on every request. Map it dynamically as `L1 → L2`, `L2 → L3`, `L3 → L4`, `L4 → L5`, `L5 → L6`, `L6 → L7`, and `L7 → L7` maintenance; never assume a fixed target.
+- Require three unique allowlisted action IDs and keep `schedule_monthly_checkin` third.
+- Derive progress deterministically from completed count. The model never controls it.
+- Keep localized titles and completion criteria in reviewed client-owned static copy.
+- Never add current level, amounts, PSID values, paths, assessment, model, source, explanation, duration, score, or recommendation fields to a successful JSON body. The source level header is the sole exception and remains no-store.
+- Validate the final projection with the strict public Zod schema for model, fallback and rate-limited responses.
 
 ## Internal intelligence boundary
 
-- `src/lib/wealth/engine.ts` and `src/lib/wealth/server/planner-core.ts` may calculate and compare server-side candidates, but those details are not a public product surface.
-- `src/lib/wealth/public-plan.ts` owns the public schema, action allowlist, static copy, and safe projection.
-- `src/app/api/v2/plan/route.ts` is the public boundary. It may call internal analysis but returns only the public plan.
+- Classification, transition anchors, safety constraints and deterministic fallback are server responsibilities.
+- `src/lib/wealth/public-plan.ts` owns the public schema, action allowlist, static copy and safe projection.
+- `src/app/api/v2/plan/route.ts` is the public boundary and must return no-store responses.
 - Keep OpenAI calls server-side through the Responses API and `OPENAI_MODEL`, defaulting to `gpt-5.6`.
-- Preserve Zod Structured Outputs, semantic validation, `store: false`, token limits, and hashed `safety_identifier`.
-- Preserve one reviewed transition-anchor action for the request's `currentLevel`. GPT‑5.6 may choose a safe companion only from that transition's routine allowlist; an applicable safety constraint takes precedence. The third action is always `schedule_monthly_checkin`.
-- GPT‑5.6 must not generate user-facing financial prose, numbers, returns, products, transactions, or progress.
-- Missing keys, API errors, invalid output, and rate limits must use a deterministic fallback with the same public success shape. Do not surface model/fallback provenance in the main UI.
-- Preserve pre-model PII screening and blocking for product, transaction, tax, credit, execution, income-interruption, delinquency, and bankruptcy requests.
-- Reject common currency amount forms in the optional constraint note and reduce every accepted note to allowlisted constraint signals before model input. Never treat regex screening as complete natural-language amount detection.
+- Preserve Zod Structured Outputs, semantic validation, `store: false`, token limits and hashed `safety_identifier`.
+- Preserve one reviewed transition-anchor action for the classified source level. GPT‑5.6 may choose only from that transition's routine allowlist; an applicable safety constraint takes precedence. The third action is always `schedule_monthly_checkin`.
+- Model input may contain allowed action IDs, normalized income-execution and debt bands, the optional currency-neutral PSID signal, and allowlisted situation signals. It must not contain amounts, net worth, current or next level, the raw note, products, transactions, returns or progress.
+- Missing keys, API errors, invalid model output and rate limits use the same deterministic public shape. Do not expose model or fallback provenance.
 - Keep the 8KB body limit and demo limits of 20 requests per IP per minute and 8 per session per minute. Production requires authenticated distributed limiting.
 
 ## PSID data boundary
 
-- Use only the published historical 2019 weighted PSID aggregate for US family net worth recorded in `src/lib/wealth/server/psid-reference.ts`.
-- The public percentile bands are conceptual cut ranges: `below_25`, `p25_49`, `p50_74`, `p75_89`, `p90_plus`, and `unknown`.
-- The user self-selects a band. The service does not compare personal assets with PSID values or calculate a statistical percentile. WealthCopy levels and their sequential transitions are defined independently of PSID.
-- Keep `psid-wealth-reference-v1` separate from `behavior-policy-v1`. Do not use a higher self-selected asset band to increase path speed, risk, or confidence.
-- Never describe a selected band as a Korean population percentile, an official asset grade, a verified level outcome, or a forecast.
-- Do not convert PSID dollar thresholds to Korean won. Keep source amounts and metadata under the current server import path, exclude them from the client bundle, model input, public API, and browser storage, and audit the production bundle after changes.
-- Public Use microdata requiring registration and agreement to conditions, Restricted Data requiring a separate contract, and individual family records are not part of this MVP. A future calibrated dataset must be versioned and reviewed before replacing the public aggregate adapter.
+- Use only the published historical 2019 weighted PSID aggregate recorded in `src/lib/wealth/server/psid-reference.ts`.
+- The optional bands are `below_25`, `p25_49`, `p50_74`, `p75_89`, `p90_plus`, and `unknown`.
+- The user may self-select a band or leave it unknown. Do not compare their amounts with PSID, calculate a statistical percentile, or use the band to classify L1–L15.
+- Keep `psid-wealth-reference-v1`, `krw-net-worth-v1` and `behavior-policy-v1` separate.
+- Do not use a higher PSID band to increase speed, risk, confidence or expected success.
+- Never describe a band as a Korean population percentile, official grade, verified outcome or forecast.
+- Do not convert PSID dollar thresholds to Korean won. Keep audit values server-only and out of model input, public responses, storage and client bundles.
+- Registered Public Use microdata, Restricted Data and individual family records are outside this MVP.
 
-## Persistence and interaction
+## Persistence and monthly continuity
 
-- Store only `{version, monthKey, sourceLevel, plan}` under `wealthcopy-public-plan-v3`; the nested plan must satisfy the exact public schema. `sourceLevel` is product journey context, not verified asset status or a financial profile.
-- Do not store setup profile, internal candidates, model output, or analysis metadata.
-- Reset completed states for an incomplete plan when the month changes and validate all restored data.
-- A `3/3` plan does not prove level attainment. On continuation or month rollover, present the old `nextLevel` only as a current-stage candidate, require the user to recheck their status, and then create the next transition.
-- When regenerating actions in the same month, carry completion only when both the stored `sourceLevel` and next level are unchanged and the action ID exists in both the old and new plan.
-- Migrate `wealthcopy-public-plan-v2` as the legacy `L6 → L7` source once, then remove the v2 key.
-- Migrate the legacy `wealthcopy-demo-plan-v1` task state to the three public actions, then remove the legacy key.
-- Offer a client-generated `.ics` file for the monthly check-in. It must contain no financial profile, PSID band, amount, model output, or other private data.
-- Use native checkboxes, `<fieldset>`, `<legend>`, `<progress max={3}>`, visible completion text, and a polite live region.
-- Keep the screen-reader order `next level → progress → three actions` and preserve 44px touch targets.
+- Store only the strict `wealthcopy-public-plan-v4` record: `{version, monthKey, sourceLevel, plan}`. Its v4 semantics are fixed to `krw-net-worth-v1`; there is no separate policy field. Do not store exact amounts, ratios, PSID selection, raw note, internal candidates or model output.
+- Keep the anonymous session UUID in the separate `wealthcopy-anonymous-session` localStorage key. It is not part of the v4 plan record and must not contain financial data.
+- Delete `wealthcopy-public-plan-v3`, `wealthcopy-public-plan-v2` and `wealthcopy-demo-plan-v1`; their meanings are incompatible with automatic net-worth classification.
+- Do not migrate a historical level or completed plan into a new financial band.
+- On every month rollover, require a fresh household snapshot before presenting a current next level. Do not carry a stale classification merely because the old plan was incomplete.
+- On same-month regeneration, carry completion only when the classified source level and target are unchanged and the action ID exists in both plans.
+- The client-generated `.ics` file must contain no amount, level, PSID band, profile, action completion or model data.
+- Clearing this month's record must remove the current and deprecated plan keys. Document that the anonymous session identifier is separate if it remains.
+
+## Upper-level action safety
+
+- Upper-level anchors should focus on records, review dates, liabilities, ownership, reporting, authority and operational continuity—not products, allocation, returns, tax optimization, legal conclusions or transactions.
+- Actions involving continuity or alternate access must explicitly prohibit recording or sharing passwords, authentication factors, account details or other secrets.
+- Checking an action records behavior only; it never values assets, changes ownership, grants authority, moves money or executes a transaction.
 
 ## Financial safety
 
-- WealthCopy is an educational behavior tracker, not investment, tax, legal, credit, or insurance advice.
-- Do not add securities, funds, crypto, loans, leverage, allocation, return, buy/sell, timing, money movement, or automatic rebalancing.
-- Checking an action records behavior only and never executes a transaction.
+- WealthCopy is an educational behavior tracker, not investment, tax, legal, credit or insurance advice.
+- Do not add securities, funds, crypto, loans, leverage, allocation, return, buy/sell timing, money movement or automatic rebalancing.
+- Production requires authentication-aware distributed rate limiting, monitoring, explicit consent and deletion, retention policy, accessibility review and financial/legal review.
 
 ## Verification
 
@@ -90,4 +131,4 @@ On Windows use `pnpm.cmd` when PowerShell blocks the `.ps1` shim.
 3. `pnpm.cmd test`
 4. `pnpm.cmd build`
 
-Keep `README.md`, `docs/DECISIONS.md`, and `docs/DEMO_SCRIPT.md` synchronized. Do not weaken evidence in `docs/BUILD_WEEK.md`.
+Keep `README.md`, `docs/DECISIONS.md`, `docs/DEMO_SCRIPT.md`, and `docs/BUILD_WEEK.md` synchronized. Never touch the user-owned untracked `기획서/` directory unless explicitly asked.

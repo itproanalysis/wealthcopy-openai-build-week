@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import { assetLevelSchema } from "./asset-level";
 import { normalizedProfileSchema } from "./normalized-profile";
 import {
   INTERNAL_PATH_LIBRARY,
@@ -12,14 +11,9 @@ import type { PublicActionId } from "./public-plan";
 
 export const pathTypeSchema = z.enum(INTERNAL_PATH_TYPES);
 
-export const wealthProfileSchema = normalizedProfileSchema
-  .extend({
-    currentLevel: assetLevelSchema,
-  })
-  .strict();
+/** Internal path matching consumes ratios only, never raw household amounts. */
+export const wealthProfileSchema = normalizedProfileSchema;
 
-export { assetLevelSchema } from "./asset-level";
-export type { AssetLevel } from "./asset-level";
 export type PathType = InternalPathType;
 export type WealthProfile = z.infer<typeof wealthProfileSchema>;
 
