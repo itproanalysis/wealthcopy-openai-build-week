@@ -18,16 +18,24 @@ import {
 } from "@/lib/wealth/public-plan";
 import {
   DEFAULT_PUBLIC_ACTION_IDS,
+  LEGACY_FIXED_TARGET_SOURCE_LEVEL,
   migrateLegacyPlan,
+  migrateStoredPlanV2,
   parseStoredPlan,
   restoreStoredPlan,
   serializeStoredPlan,
 } from "@/lib/wealth/public-plan-storage";
+import {
+  ASSET_LEVELS,
+  type AssetLevel,
+} from "@/lib/wealth/asset-level";
+import { createMonthlyCheckinCalendar } from "@/lib/wealth/monthly-checkin-calendar";
 import type { PsidAssetPercentileBand } from "@/lib/wealth/normalized-profile";
 
 import { WealthLogo } from "./logo";
 
 type SetupProfile = {
+  currentLevel: AssetLevel | "";
   incomeExecutionRatio: number | "";
   assetPercentileBand: PsidAssetPercentileBand;
   debtServiceRatio: number | "";
@@ -39,11 +47,13 @@ type ApiErrorBody = {
 
 class UserFacingPlanError extends Error {}
 
-const PLAN_STORAGE_KEY = "wealthcopy-public-plan-v2";
+const PLAN_STORAGE_KEY = "wealthcopy-public-plan-v3";
+const PREVIOUS_PLAN_STORAGE_KEY = "wealthcopy-public-plan-v2";
 const LEGACY_PLAN_STORAGE_KEY = "wealthcopy-demo-plan-v1";
 const SESSION_STORAGE_KEY = "wealthcopy-anonymous-session";
 
 const INITIAL_PROFILE: SetupProfile = {
+  currentLevel: "",
   incomeExecutionRatio: "",
   assetPercentileBand: "unknown",
   debtServiceRatio: "",
@@ -51,15 +61,25 @@ const INITIAL_PROFILE: SetupProfile = {
 
 const INITIAL_NOTE = "";
 
+const WEALTH_JOURNEY_LABELS: Record<AssetLevel, string> = {
+  L1: "시작",
+  L2: "흐름 정리",
+  L3: "현금 안전망",
+  L4: "납부 안정",
+  L5: "월 실행",
+  L6: "자산 구조",
+  L7: "장기 유지",
+};
+
 const ASSET_PERCENTILE_LABELS: Record<
   PsidAssetPercentileBand,
   string
 > = {
-  below_25: "25백분위 미만",
-  p25_49: "25–49백분위",
-  p50_74: "50–74백분위",
-  p75_89: "75–89백분위",
-  p90_plus: "90백분위 이상",
+  below_25: "참조 분포 25백분위 미만",
+  p25_49: "참조 분포 25–49백분위",
+  p50_74: "참조 분포 50–74백분위",
+  p75_89: "참조 분포 75–89백분위",
+  p90_plus: "참조 분포 90백분위 이상",
   unknown: "잘 모르겠어요",
 };
 
@@ -107,9 +127,14 @@ export function WealthCopyApp() {
   const [setupError, setSetupError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [calendarNow, setCalendarNow] = useState(() => new Date());
+  const [journeySourceLevel, setJourneySourceLevel] =
+    useState<AssetLevel | null>(null);
+  const [journeyLevelSuggestion, setJourneyLevelSuggestion] =
+    useState<AssetLevel | null>(null);
 
   const pageContentRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const levelInputRef = useRef<HTMLSelectElement>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
   const debtInputRef = useRef<HTMLInputElement>(null);
   const firstActionInputRef = useRef<HTMLInputElement>(null);
@@ -126,17 +151,56 @@ export function WealthCopyApp() {
     : DEFAULT_PUBLIC_ACTION_IDS;
   const activeActionId =
     plan?.actions.find((action) => !action.completed)?.id ?? null;
+  const nextLevelLabel = plan?.nextLevel ?? "NEXT";
+  const suggestedCurrentLevel =
+    plan?.progress === 100
+      ? plan.nextLevel
+      : journeyLevelSuggestion;
 
   useEffect(() => {
     const restoreTimer = window.setTimeout(() => {
       try {
-        const restoredPlan = restoreStoredPlan(
+        let restoredPlan = restoreStoredPlan(
           window.localStorage.getItem(PLAN_STORAGE_KEY),
           currentMonth,
         );
 
+        if (!restoredPlan) {
+          restoredPlan = migrateStoredPlanV2(
+            window.localStorage.getItem(PREVIOUS_PLAN_STORAGE_KEY),
+            currentMonth,
+          );
+          if (restoredPlan) {
+            window.localStorage.setItem(
+              PLAN_STORAGE_KEY,
+              serializeStoredPlan(
+                currentMonth,
+                restoredPlan.sourceLevel,
+                restoredPlan.plan,
+              ),
+            );
+            window.localStorage.removeItem(PREVIOUS_PLAN_STORAGE_KEY);
+          }
+        }
+
         if (restoredPlan) {
+          window.localStorage.removeItem(PREVIOUS_PLAN_STORAGE_KEY);
+          if (
+            restoredPlan.rolledOver &&
+            restoredPlan.previousMonthCompleted
+          ) {
+            setJourneyLevelSuggestion(restoredPlan.plan.nextLevel);
+            window.localStorage.removeItem(PLAN_STORAGE_KEY);
+            setPlan(null);
+            setJourneySourceLevel(null);
+            setStatusMessage(
+              `지난달 행동을 모두 완료했어요. ${restoredPlan.plan.nextLevel}를 현재 단계 후보로 확인하고 다음 행동을 복제해 주세요.`,
+            );
+            return;
+          }
+
           setPlan(restoredPlan.plan);
+          setJourneySourceLevel(restoredPlan.sourceLevel);
           window.localStorage.removeItem(LEGACY_PLAN_STORAGE_KEY);
           setStatusMessage(
             restoredPlan.rolledOver
@@ -152,13 +216,18 @@ export function WealthCopyApp() {
 
         if (!migratedPlan) {
           window.localStorage.removeItem(PLAN_STORAGE_KEY);
+          window.localStorage.removeItem(PREVIOUS_PLAN_STORAGE_KEY);
           window.localStorage.removeItem(LEGACY_PLAN_STORAGE_KEY);
           return;
         }
 
         window.localStorage.setItem(
           PLAN_STORAGE_KEY,
-          serializeStoredPlan(currentMonth, migratedPlan),
+          serializeStoredPlan(
+            currentMonth,
+            LEGACY_FIXED_TARGET_SOURCE_LEVEL,
+            migratedPlan,
+          ),
         );
 
         const verified = parseStoredPlan(
@@ -169,6 +238,7 @@ export function WealthCopyApp() {
 
         window.localStorage.removeItem(LEGACY_PLAN_STORAGE_KEY);
         setPlan(verified);
+        setJourneySourceLevel(LEGACY_FIXED_TARGET_SOURCE_LEVEL);
         setStatusMessage("기존 행동 기록을 새 화면으로 옮겼어요.");
       } finally {
         setIsRestoring(false);
@@ -184,13 +254,27 @@ export function WealthCopyApp() {
       if (monthKey(now) === monthKey(calendarNow)) return;
 
       setIsRestoring(true);
-      setPlan((current) =>
-        current
-          ? projectPublicPlan(current.actions.map((action) => action.id))
-          : null,
-      );
+      if (plan?.progress === 100) {
+        setJourneyLevelSuggestion(plan.nextLevel);
+        window.localStorage.removeItem(PLAN_STORAGE_KEY);
+        setPlan(null);
+        setJourneySourceLevel(null);
+        setStatusMessage(
+          `지난달 행동을 모두 완료했어요. ${plan.nextLevel}를 현재 단계 후보로 확인하고 다음 행동을 복제해 주세요.`,
+        );
+      } else {
+        setPlan((current) =>
+          current
+            ? projectPublicPlan(
+                current.nextLevel,
+                current.actions.map((action) => action.id),
+              )
+            : null,
+        );
+        setStatusMessage("새 달이 시작되어 행동 완료 상태를 초기화했어요.");
+      }
       setCalendarNow(now);
-      setStatusMessage("새 달이 시작되어 행동 완료 상태를 초기화했어요.");
+      setIsRestoring(false);
     };
 
     const intervalId = window.setInterval(syncMonth, 60_000);
@@ -200,16 +284,16 @@ export function WealthCopyApp() {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", syncMonth);
     };
-  }, [calendarNow]);
+  }, [calendarNow, plan]);
 
   useEffect(() => {
-    if (!plan) return;
+    if (!plan || !journeySourceLevel) return;
 
     window.localStorage.setItem(
       PLAN_STORAGE_KEY,
-      serializeStoredPlan(currentMonth, plan),
+      serializeStoredPlan(currentMonth, journeySourceLevel, plan),
     );
-  }, [currentMonth, plan]);
+  }, [currentMonth, journeySourceLevel, plan]);
 
   useEffect(
     () => () => {
@@ -235,7 +319,7 @@ export function WealthCopyApp() {
     const previouslyFocused = document.activeElement;
     const pageContent = pageContentRef.current;
     const previousOverflow = document.body.style.overflow;
-    const focusTimer = window.setTimeout(() => firstInputRef.current?.focus(), 0);
+    const focusTimer = window.setTimeout(() => levelInputRef.current?.focus(), 0);
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -283,11 +367,21 @@ export function WealthCopyApp() {
   }, [setupOpen]);
 
   function openSetup() {
+    const suggestedLevel = suggestedCurrentLevel;
+    const previousProfile = lastProfileRef.current;
+
     setSetupError(null);
     setProfile(
-      lastProfileRef.current
-        ? { ...lastProfileRef.current }
-        : { ...INITIAL_PROFILE },
+      previousProfile
+        ? {
+            ...previousProfile,
+            currentLevel:
+              suggestedLevel ?? previousProfile.currentLevel,
+          }
+        : {
+            ...INITIAL_PROFILE,
+            currentLevel: suggestedLevel ?? "",
+          },
     );
     setConstraintNote(INITIAL_NOTE);
     setSetupOpen(true);
@@ -313,8 +407,17 @@ export function WealthCopyApp() {
 
     if (!profile || constraintNote === null) return;
 
-    const { incomeExecutionRatio, assetPercentileBand, debtServiceRatio } =
-      profile;
+    const {
+      currentLevel,
+      incomeExecutionRatio,
+      assetPercentileBand,
+      debtServiceRatio,
+    } = profile;
+    if (currentLevel === "") {
+      setSetupError("현재 자산 단계를 직접 선택해 주세요.");
+      levelInputRef.current?.focus();
+      return;
+    }
     if (incomeExecutionRatio === "") {
       setSetupError("소득 대비 실행 비율을 입력해 주세요.");
       firstInputRef.current?.focus();
@@ -336,7 +439,7 @@ export function WealthCopyApp() {
       plan &&
       completedCount > 0 &&
       !window.confirm(
-        "조건을 바꾸면 행동 구성이 달라질 수 있어요. 같은 행동의 완료 기록은 유지하고, 빠진 행동 기록은 사라집니다. 계속할까요?",
+        "조건을 바꾸면 행동 구성이 달라질 수 있어요. 같은 현재 단계와 다음 단계의 같은 행동만 완료 기록을 유지합니다. 계속할까요?",
       )
     ) {
       return;
@@ -352,6 +455,7 @@ export function WealthCopyApp() {
       const response = await fetch("/api/v2/plan", {
         body: JSON.stringify({
           profile: {
+            currentLevel,
             incomeExecutionRatio,
             assetPercentileBand,
             debtServiceRatio,
@@ -383,25 +487,34 @@ export function WealthCopyApp() {
         );
       }
 
+      const previousPlanForTarget =
+        journeySourceLevel === currentLevel &&
+        plan?.nextLevel === parsedPlan.data.nextLevel
+          ? plan
+          : null;
       const nextPlan = carryCompletedActions(
-        plan,
+        previousPlanForTarget,
+        parsedPlan.data.nextLevel,
         parsedPlan.data.actions.map((action) => action.id),
       );
 
       lastProfileRef.current = {
+        currentLevel,
         incomeExecutionRatio,
         assetPercentileBand,
         debtServiceRatio,
       };
+      setJourneyLevelSuggestion(null);
       focusNewPlanRef.current = true;
       setPlan(nextPlan);
+      setJourneySourceLevel(currentLevel);
       setProfile(null);
       setConstraintNote(null);
       setSetupOpen(false);
       setStatusMessage(
         nextPlan.progress > 0
-          ? "새 행동 세 개를 준비했고, 같은 행동의 완료 기록은 유지했어요."
-          : "L7을 향한 이번 달 행동 세 개가 준비됐어요.",
+          ? `${nextPlan.nextLevel} 행동 세 개를 준비했고, 같은 행동의 완료 기록은 유지했어요.`
+          : `${nextPlan.nextLevel}의 이번 달 행동 세 개가 준비됐어요.`,
       );
     } catch (error) {
       if (abortController.signal.aborted) return;
@@ -443,8 +556,25 @@ export function WealthCopyApp() {
     ).length;
     setStatusMessage(
       nextCompletedCount === 3
-        ? `${actionCopy.title} 완료. 이번 달 행동 세 개를 모두 마쳤어요.`
+        ? `${actionCopy.title} 완료. 이번 달 행동 세 개를 모두 마쳤어요. ${nextPlan.nextLevel}를 현재 단계 후보로 확인한 뒤 다음 행동을 이어갈 수 있어요.`
         : `${actionCopy.title} ${updatedAction?.completed ? "완료" : "완료 취소"}. 세 개 중 ${nextCompletedCount}개 완료했어요.`,
+    );
+  }
+
+  function downloadMonthlyCheckin() {
+    const calendar = createMonthlyCheckinCalendar(currentMonth);
+    const objectUrl = window.URL.createObjectURL(
+      new Blob([calendar.content], { type: calendar.mimeType }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = calendar.filename;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 0);
+    setStatusMessage(
+      "월말 점검 일정 파일을 준비했어요. 캘린더에 추가한 뒤 행동을 완료해 주세요.",
     );
   }
 
@@ -458,9 +588,12 @@ export function WealthCopyApp() {
     }
 
     window.localStorage.removeItem(PLAN_STORAGE_KEY);
+    window.localStorage.removeItem(PREVIOUS_PLAN_STORAGE_KEY);
     window.localStorage.removeItem(LEGACY_PLAN_STORAGE_KEY);
     lastProfileRef.current = null;
+    setJourneyLevelSuggestion(null);
     setPlan(null);
+    setJourneySourceLevel(null);
     setStatusMessage("이번 달 행동 기록을 지웠어요.");
   }
 
@@ -481,14 +614,22 @@ export function WealthCopyApp() {
                 type="button"
               >
                 <span className="sm:hidden">
-                  {isRestoring ? "불러오는 중" : plan ? "다시 만들기" : "시작하기"}
+                  {isRestoring
+                    ? "불러오는 중"
+                    : plan?.progress === 100
+                      ? "다음 단계"
+                      : plan
+                        ? "다시 만들기"
+                        : "시작하기"}
                 </span>
                 <span className="hidden whitespace-nowrap sm:inline">
                   {isRestoring
                     ? "행동 불러오는 중"
-                    : plan
-                      ? "행동 다시 복제"
-                      : "시작하기"}
+                    : plan?.progress === 100
+                      ? "다음 단계 이어가기"
+                      : plan
+                        ? "행동 다시 복제"
+                        : "시작하기"}
                 </span>
               </button>
             </div>
@@ -509,19 +650,21 @@ export function WealthCopyApp() {
                   </p>
                   <div className="mt-3 flex items-end gap-5 sm:mt-4">
                     <span className="text-[4.75rem] font-black leading-none tracking-[-0.09em] text-[#082a66] sm:text-[7rem]">
-                      L7
+                      {nextLevelLabel}
                     </span>
                     <span className="mb-3 rounded-full bg-[#e9f9f8] px-3 py-1.5 text-xs font-extrabold text-[#078f93]">
-                      NEXT
+                      {plan ? "GOAL" : "선택 전"}
                     </span>
                   </div>
                   <h1 className="mt-5 max-w-xl text-2xl font-black leading-tight tracking-[-0.05em] text-[#10213f] sm:mt-7 sm:text-4xl">
                     {completedCount === 3
                       ? "이번 달 3가지 행동을 완료했습니다."
-                      : `L7 경로를 ${plan ? "실행합니다." : "복제합니다."}`}
+                      : plan
+                        ? `${plan.nextLevel} 행동을 실행합니다.`
+                        : "다음 자산 단계의 행동을 복제합니다."}
                   </h1>
                   <p className="mt-3 max-w-xl text-base leading-7 text-[#68768c]">
-                    상위 단계로 넘어가기 위해 3가지 행동이 필요합니다.
+                    다음 단계로 이어가기 위해 3가지 행동이 필요합니다.
                   </p>
                 </div>
               </div>
@@ -551,7 +694,7 @@ export function WealthCopyApp() {
                   className="mt-4 text-xs leading-5 text-white/55"
                   id="progress-safety-note"
                 >
-                  행동 완료율이며 자산 변화나 L7 도달률을 의미하지 않아요.
+                  행동 완료율이며 자산 변화나 목표 단계 도달률을 의미하지 않아요.
                 </p>
               </div>
             </section>
@@ -586,7 +729,7 @@ export function WealthCopyApp() {
                     const completed = action?.completed ?? false;
 
                     return (
-                      <label
+                      <div
                         aria-current={
                           actionId === activeActionId ? "step" : undefined
                         }
@@ -603,62 +746,96 @@ export function WealthCopyApp() {
                         }`}
                         key={actionId}
                       >
-                        <input
-                          checked={completed}
-                          className="peer sr-only"
-                          onChange={() => toggleAction(actionId)}
-                          ref={index === 0 ? firstActionInputRef : undefined}
-                          type="checkbox"
-                        />
-                        <span className="flex items-center justify-between">
-                          <span
-                            aria-hidden="true"
-                            className="text-sm font-black tracking-[0.12em] text-[#91a0b3]"
-                          >
-                            0{index + 1}
+                        <label
+                          className={
+                            plan ? "block cursor-pointer" : "block cursor-not-allowed"
+                          }
+                        >
+                          <input
+                            checked={completed}
+                            className="peer sr-only"
+                            onChange={() => toggleAction(actionId)}
+                            ref={index === 0 ? firstActionInputRef : undefined}
+                            type="checkbox"
+                          />
+                          <span className="flex items-center justify-between">
+                            <span
+                              aria-hidden="true"
+                              className="text-sm font-black tracking-[0.12em] text-[#91a0b3]"
+                            >
+                              0{index + 1}
+                            </span>
+                            <span
+                              aria-hidden="true"
+                              className={`grid size-10 place-items-center rounded-full border-2 text-sm font-black transition ${
+                                completed
+                                  ? "border-[#06a4a8] bg-[#06a4a8] text-white"
+                                  : "border-[#cbd7e3] bg-white text-transparent"
+                              }`}
+                            >
+                              ✓
+                            </span>
                           </span>
                           <span
-                            aria-hidden="true"
-                            className={`grid size-10 place-items-center rounded-full border-2 text-sm font-black transition ${
+                            className={`mt-5 block text-lg font-black tracking-[-0.03em] sm:mt-8 sm:text-xl ${
                               completed
-                                ? "border-[#06a4a8] bg-[#06a4a8] text-white"
-                                : "border-[#cbd7e3] bg-white text-transparent"
+                                ? "text-[#4b7281] line-through"
+                                : "text-[#173253]"
                             }`}
                           >
-                            ✓
+                            {actionCopy.title}
                           </span>
-                        </span>
-                        <span
-                          className={`mt-5 block text-lg font-black tracking-[-0.03em] sm:mt-8 sm:text-xl ${
-                            completed
-                              ? "text-[#4b7281] line-through"
-                              : "text-[#173253]"
-                          }`}
-                        >
-                          {actionCopy.title}
-                        </span>
-                        <span className="mt-3 block text-sm leading-6 text-[#748196]">
-                          {actionCopy.description}
-                        </span>
-                        <span className="mt-4 block text-xs font-extrabold text-[#078f93] sm:mt-6">
-                          {completed
-                            ? "완료"
-                            : actionId === activeActionId
-                              ? "지금 할 행동"
-                            : plan
-                              ? "이어 할 행동"
-                              : "복제 후 시작"}
-                        </span>
-                      </label>
+                          <span className="mt-3 block text-sm leading-6 text-[#748196]">
+                            <strong className="mr-1 font-extrabold text-[#4b627c]">
+                              완료 기준
+                            </strong>
+                            {actionCopy.description}
+                          </span>
+                          <span className="mt-4 block text-xs font-extrabold text-[#078f93] sm:mt-6">
+                            {completed
+                              ? "완료"
+                              : actionId === activeActionId
+                                ? "지금 할 행동"
+                              : plan
+                                ? "이어 할 행동"
+                                : "복제 후 시작"}
+                          </span>
+                        </label>
+                        {plan && actionId === "schedule_monthly_checkin" ? (
+                          <button
+                            className="mt-4 min-h-11 w-full rounded-xl border border-[#b9dfe0] bg-white px-4 text-xs font-extrabold text-[#087f83] transition hover:border-[#06a4a8] hover:bg-[#f2fbfa]"
+                            onClick={downloadMonthlyCheckin}
+                            type="button"
+                          >
+                            월말 일정 파일 받기
+                          </button>
+                        ) : null}
+                      </div>
                     );
                   })}
                 </div>
               </fieldset>
 
+              {plan?.progress === 100 ? (
+                <div className="mt-7 flex flex-col items-start justify-between gap-4 rounded-2xl border border-[#b9dfe0] bg-[#f2fbfa] p-5 sm:flex-row sm:items-center sm:px-6">
+                  <p className="text-sm font-bold leading-6 text-[#476579]">
+                    3가지 행동을 완료했어요. {plan.nextLevel}를 현재 단계 후보로
+                    확인한 뒤 다음 전환을 이어가세요.
+                  </p>
+                  <button
+                    className="min-h-12 w-full shrink-0 rounded-xl bg-[#087f83] px-6 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(6,164,168,0.18)] transition hover:bg-[#066f72] sm:w-auto"
+                    onClick={openSetup}
+                    type="button"
+                  >
+                    현재 상태 확인하고 이어가기
+                  </button>
+                </div>
+              ) : null}
+
               {!plan ? (
                 <div className="mt-7 flex flex-col items-center justify-between gap-4 rounded-2xl bg-[#f1f7fb] p-5 sm:flex-row sm:px-6">
                   <p className="text-sm font-bold leading-6 text-[#5f7188]">
-                    이번 달에 완료할 행동 3개를 준비합니다.
+                    {statusMessage || "이번 달에 완료할 행동 3개를 준비합니다."}
                   </p>
                   <button
                     className="min-h-12 w-full shrink-0 rounded-xl bg-[#082a66] px-6 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(8,42,102,0.18)] transition hover:bg-[#061f51] sm:w-auto"
@@ -668,7 +845,7 @@ export function WealthCopyApp() {
                   >
                     {isRestoring
                       ? "행동 불러오는 중…"
-                      : "L7 행동 3개 복제하기"}
+                      : "다음 단계 행동 3개 복제하기"}
                   </button>
                 </div>
               ) : null}
@@ -717,13 +894,13 @@ export function WealthCopyApp() {
             <div className="flex items-start justify-between gap-5">
               <div>
                 <p className="text-xs font-black tracking-[0.15em] text-[#078f93]">
-                  L7 ACTION COPY
+                  NEXT ACTION COPY
                 </p>
                 <h2
                   className="mt-2 text-3xl font-black tracking-[-0.045em] text-[#082a66]"
                   id="setup-title"
                 >
-                  30초면 L7 행동을 복제할 수 있어요
+                  30초면 다음 단계 행동을 복제할 수 있어요
                 </h2>
                 <p
                   className="mt-3 max-w-lg text-sm leading-6 text-[#6d7b90]"
@@ -747,7 +924,52 @@ export function WealthCopyApp() {
             <form className="mt-7" onSubmit={handleCreatePlan}>
               <fieldset disabled={isPreparing}>
                 <legend className="sr-only">행동 생성에 사용할 현재 조건</legend>
-                <div className="grid gap-5 md:grid-cols-3">
+                <label className="block rounded-2xl border border-[#dbe6ee] bg-[#f7fbfc] p-4 text-sm font-extrabold text-[#31415d] sm:grid sm:grid-cols-[minmax(0,1fr)_15rem] sm:items-center sm:gap-6 sm:p-5">
+                  <span>
+                    현재 자산 단계
+                    <span className="ml-1 font-normal text-[#8995a8]">
+                      (직접 선택)
+                    </span>
+                    <span
+                      className="mt-1.5 block text-xs font-normal leading-5 text-[#7a879b]"
+                      id="current-level-help"
+                    >
+                      자산 규모를 인증한 등급이 아니라, 지금까지 완료한 실행
+                      기준을 표시하는 WealthCopy 여정 단계예요. 현재 상태와
+                      가장 가까운 단계를 골라 주세요.
+                      {suggestedCurrentLevel ? (
+                        <strong className="mt-1 block font-extrabold text-[#087f83]">
+                          지난 행동을 모두 완료해 {suggestedCurrentLevel}를 현재
+                          단계 후보로 불러왔어요. 실제 상태와 다르면 바꾸세요.
+                        </strong>
+                      ) : null}
+                    </span>
+                  </span>
+                  <select
+                    aria-describedby="current-level-help"
+                    aria-invalid={
+                      profile.currentLevel === "" && Boolean(setupError)
+                    }
+                    className={`${inputClass} sm:mt-0`}
+                    onChange={(event) =>
+                      updateProfile({
+                        currentLevel: event.target.value as AssetLevel | "",
+                      })
+                    }
+                    ref={levelInputRef}
+                    required
+                    value={profile.currentLevel}
+                  >
+                    <option value="">현재 단계 선택</option>
+                    {ASSET_LEVELS.map((level) => (
+                      <option key={level} value={level}>
+                        {level} · {WEALTH_JOURNEY_LABELS[level]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="mt-5 grid gap-5 md:grid-cols-3">
                   <label className="text-sm font-extrabold text-[#31415d]">
                     소득 대비 실행 비율
                     <span className="ml-1 font-normal text-[#8995a8]">
@@ -780,7 +1002,7 @@ export function WealthCopyApp() {
                     </span>
                   </label>
                   <label className="text-sm font-extrabold text-[#31415d]">
-                    내 자산 위치
+                    자가 선택 자산 참고 구간
                     <span className="ml-1 font-normal text-[#8995a8]">
                       (선택)
                     </span>
@@ -796,11 +1018,11 @@ export function WealthCopyApp() {
                       value={profile.assetPercentileBand}
                     >
                       <option value="unknown">잘 모르겠어요</option>
-                      <option value="below_25">하위 구간 · 25백분위 미만</option>
-                      <option value="p25_49">중하위 구간 · 25–49백분위</option>
-                      <option value="p50_74">중상위 구간 · 50–74백분위</option>
-                      <option value="p75_89">상위 구간 · 75–89백분위</option>
-                      <option value="p90_plus">상위 10% 구간 · 90백분위 이상</option>
+                      <option value="below_25">참조 분포 · 25백분위 미만</option>
+                      <option value="p25_49">참조 분포 · 25–49백분위</option>
+                      <option value="p50_74">참조 분포 · 50–74백분위</option>
+                      <option value="p75_89">참조 분포 · 75–89백분위</option>
+                      <option value="p90_plus">참조 분포 · 90백분위 이상</option>
                     </select>
                     <span
                       className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
@@ -843,10 +1065,16 @@ export function WealthCopyApp() {
                 </div>
 
                 <div
-                  aria-label="정규화된 세 가지 조건"
-                  className="mt-6 grid gap-3 rounded-2xl bg-[#f2f8fb] p-4 sm:grid-cols-3"
+                  aria-label="입력한 네 가지 조건"
+                  className="mt-6 grid gap-3 rounded-2xl bg-[#f2f8fb] p-4 sm:grid-cols-2 lg:grid-cols-4"
                 >
                   {[
+                    [
+                      "자산 단계",
+                      profile.currentLevel === ""
+                        ? "선택 필요"
+                        : `${profile.currentLevel} · ${WEALTH_JOURNEY_LABELS[profile.currentLevel]}`,
+                    ],
                     [
                       "소득 대비",
                       profile.incomeExecutionRatio === ""
@@ -854,7 +1082,7 @@ export function WealthCopyApp() {
                         : `${profile.incomeExecutionRatio}%`,
                     ],
                     [
-                      "자산 위치",
+                      "참고 구간",
                       ASSET_PERCENTILE_LABELS[profile.assetPercentileBand],
                     ],
                     [
@@ -887,8 +1115,8 @@ export function WealthCopyApp() {
                   </summary>
                   <p className="mt-2 leading-6">
                     공개된 2019 PSID 순자산 분포 표의 25·50·75·90백분위
-                    경계만 참고합니다. 한국 내 실제 자산 순위나 L7 도달
-                    가능성을 뜻하지 않습니다.
+                    경계만 참고합니다. 한국 내 실제 자산 순위나 WealthCopy
+                    자산 단계 도달 가능성을 뜻하지 않습니다.
                   </p>
                 </details>
 
@@ -940,7 +1168,7 @@ export function WealthCopyApp() {
                 >
                   {isPreparing
                     ? "행동 복제 중…"
-                    : "이 조건으로 L7 행동 3개 복제"}
+                    : "이 조건으로 다음 단계 행동 3개 복제"}
                 </button>
               </div>
             </form>

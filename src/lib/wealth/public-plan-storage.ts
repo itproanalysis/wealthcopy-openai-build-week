@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 import {
+  assetLevelSchema,
+  nextAssetLevel,
+  type AssetLevel,
+} from "./asset-level";
+import {
   projectPublicPlan,
   publicPlanSchema,
   type PublicActionId,
@@ -13,44 +18,116 @@ export const DEFAULT_PUBLIC_ACTION_IDS: readonly PublicActionId[] = [
   "schedule_monthly_checkin",
 ];
 
-const storedPlanSchema = z
+const storedPlanV3Schema = z
+  .object({
+    monthKey: z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/),
+    plan: publicPlanSchema,
+    sourceLevel: assetLevelSchema,
+    version: z.literal(3),
+  })
+  .strict()
+  .refine(
+    (record) => record.plan.nextLevel === nextAssetLevel(record.sourceLevel),
+    {
+      message: "The stored target must match the source level's next step.",
+      path: ["plan", "nextLevel"],
+    },
+  );
+
+const storedPlanV2Schema = z
   .object({
     monthKey: z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/),
     plan: publicPlanSchema,
     version: z.literal(2),
   })
-  .strict();
+  .strict()
+  .refine((record) => record.plan.nextLevel === "L7", {
+    message: "Version 2 records must use the historical fixed L7 target.",
+    path: ["plan", "nextLevel"],
+  });
 
-export function serializeStoredPlan(monthKey: string, plan: PublicPlan) {
+export const LEGACY_FIXED_TARGET_SOURCE_LEVEL: AssetLevel = "L6";
+
+export function serializeStoredPlan(
+  monthKey: string,
+  sourceLevel: AssetLevel,
+  plan: PublicPlan,
+) {
   return JSON.stringify(
-    storedPlanSchema.parse({
+    storedPlanV3Schema.parse({
       monthKey,
       plan,
-      version: 2,
+      sourceLevel,
+      version: 3,
     }),
   );
 }
 
-export function restoreStoredPlan(raw: string | null, currentMonth: string) {
+function restoreRecord(
+  sourceLevel: AssetLevel,
+  plan: PublicPlan,
+  storedMonth: string,
+  currentMonth: string,
+) {
+  if (storedMonth !== currentMonth) {
+    return {
+      plan: projectPublicPlan(
+        plan.nextLevel,
+        plan.actions.map((action) => action.id),
+      ),
+      previousMonthCompleted: plan.progress === 100,
+      rolledOver: true,
+      sourceLevel,
+    };
+  }
+
+  return {
+    plan,
+    previousMonthCompleted: false,
+    rolledOver: false,
+    sourceLevel,
+  };
+}
+
+function parseStoredRecord<T>(
+  raw: string | null,
+  schema: z.ZodType<T>,
+): T | null {
   if (!raw) return null;
 
   try {
-    const parsed = storedPlanSchema.safeParse(JSON.parse(raw));
-    if (!parsed.success) return null;
-
-    if (parsed.data.monthKey !== currentMonth) {
-      return {
-        plan: projectPublicPlan(
-          parsed.data.plan.actions.map((action) => action.id),
-        ),
-        rolledOver: true,
-      };
-    }
-
-    return { plan: parsed.data.plan, rolledOver: false };
+    const parsed = schema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
+}
+
+export function restoreStoredPlan(raw: string | null, currentMonth: string) {
+  const record = parseStoredRecord(raw, storedPlanV3Schema);
+  if (!record) return null;
+
+  return restoreRecord(
+    record.sourceLevel,
+    record.plan,
+    record.monthKey,
+    currentMonth,
+  );
+}
+
+export function migrateStoredPlanV2(
+  raw: string | null,
+  currentMonth: string,
+) {
+  const record = parseStoredRecord(raw, storedPlanV2Schema);
+  if (!record) return null;
+
+  return restoreRecord(
+    LEGACY_FIXED_TARGET_SOURCE_LEVEL,
+    record.plan,
+    record.monthKey,
+    currentMonth,
+  );
 }
 
 export function parseStoredPlan(raw: string | null, currentMonth: string) {
@@ -92,7 +169,7 @@ export function migrateLegacyPlan(raw: string | null) {
       completedIds.add("schedule_monthly_checkin");
     }
 
-    return projectPublicPlan(DEFAULT_PUBLIC_ACTION_IDS, completedIds);
+    return projectPublicPlan("L7", DEFAULT_PUBLIC_ACTION_IDS, completedIds);
   } catch {
     return null;
   }

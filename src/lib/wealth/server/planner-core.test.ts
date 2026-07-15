@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { ASSET_LEVELS, nextAssetLevel } from "../asset-level";
+import { levelTransitionFor } from "../level-transitions";
 import {
   createPlanningContext,
   mergeModelSelection,
@@ -8,6 +10,7 @@ import {
 
 const request = {
   profile: {
+    currentLevel: "L6" as const,
     incomeExecutionRatio: 48,
     assetPercentileBand: "p50_74" as const,
     debtServiceRatio: 18,
@@ -26,6 +29,19 @@ describe("private planning boundary", () => {
       debtBurden: "low",
       executionPace: "accelerated",
     });
+    expect(context.modelInput.levelTransition).toEqual({
+      currentLevel: "L6",
+      nextLevel: "L7",
+    });
+    expect(context.modelInput.allowedRoutineActionIds).toEqual([
+      "review_long_term_structure",
+      "review_cash_buffer",
+      "confirm_monthly_limit",
+      "review_debt_schedule",
+    ]);
+    expect(context.modelInput.allowedRoutineActionIds).not.toContain(
+      "seek_professional_review",
+    );
     expect(context.modelInput.constraintSignals).toEqual([
       "preserve_liquidity",
       "keep_monthly_rhythm",
@@ -41,6 +57,19 @@ describe("private planning boundary", () => {
       profile: {
         ...request.profile,
         monthlyIncome: 6_500_000,
+      },
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("requires an explicit current level", () => {
+    const parsed = planRequestSchema.safeParse({
+      ...request,
+      profile: {
+        incomeExecutionRatio: request.profile.incomeExecutionRatio,
+        assetPercentileBand: request.profile.assetPercentileBand,
+        debtServiceRatio: request.profile.debtServiceRatio,
       },
     });
 
@@ -102,7 +131,7 @@ describe("private planning boundary", () => {
     expect(context.status).toBe("professional_review");
     expect(context.fallback.actions.map((action) => action.id)).toEqual([
       "seek_professional_review",
-      "review_cash_buffer",
+      "review_long_term_structure",
       "schedule_monthly_checkin",
     ]);
   });
@@ -147,8 +176,104 @@ describe("private planning boundary", () => {
       "accelerated",
     );
     expect(context.fallback.actions.map((action) => action.id)).toEqual([
+      "review_long_term_structure",
       "confirm_monthly_limit",
-      "review_cash_buffer",
+      "schedule_monthly_checkin",
+    ]);
+  });
+
+  it("builds a real next-step plan for every asset level", () => {
+    for (const currentLevel of ASSET_LEVELS) {
+      const context = createPlanningContext({
+        ...request,
+        profile: { ...request.profile, currentLevel },
+        constraintNote: "",
+      });
+      const actionIds = context.fallback.actions.map((action) => action.id);
+      const primaryActionId = levelTransitionFor(currentLevel).actionPriority[0];
+
+      expect(context.fallback.nextLevel).toBe(nextAssetLevel(currentLevel));
+      expect(actionIds).toContain(primaryActionId);
+      expect(actionIds.at(-1)).toBe("schedule_monthly_checkin");
+      expect(Object.keys(context.fallback)).toEqual([
+        "nextLevel",
+        "actions",
+        "progress",
+      ]);
+    }
+  });
+
+  it("keeps L7 active with a maintenance audit instead of inventing L8", () => {
+    const context = createPlanningContext({
+      ...request,
+      profile: { ...request.profile, currentLevel: "L7" },
+      constraintNote: "",
+    });
+
+    expect(context.fallback.nextLevel).toBe("L7");
+    expect(context.fallback.actions[0]?.id).toBe("audit_plan_drift");
+  });
+
+  it("applies constraints before the level action and keeps check-in last", () => {
+    const context = createPlanningContext({
+      ...request,
+      profile: { ...request.profile, currentLevel: "L3" },
+      constraintNote: "소득 감소가 있어 실행 범위를 다시 정하고 싶어요.",
+    });
+
+    expect(context.fallback.actions.map((action) => action.id)).toEqual([
+      "review_income_change",
+      "confirm_debt_payment_calendar",
+      "schedule_monthly_checkin",
+    ]);
+  });
+
+  it("does not let another level's model candidate replace the transition action", () => {
+    const context = createPlanningContext({
+      ...request,
+      profile: { ...request.profile, currentLevel: "L2" },
+      constraintNote: "",
+    });
+    const plan = mergeModelSelection(context, {
+      actionIds: [
+        "audit_plan_drift",
+        "review_asset_concentration",
+        "schedule_monthly_checkin",
+      ],
+    });
+
+    expect(plan.actions.map((action) => action.id)).toEqual([
+      "set_cash_safety_rule",
+      "confirm_monthly_limit",
+      "schedule_monthly_checkin",
+    ]);
+  });
+
+  it("uses a valid model routine as the second action on a normal request", () => {
+    const context = createPlanningContext({
+      ...request,
+      profile: { ...request.profile, currentLevel: "L2" },
+      constraintNote: "",
+    });
+    const fallbackActionIds = context.fallback.actions.map(
+      (action) => action.id,
+    );
+    const plan = mergeModelSelection(context, {
+      actionIds: [
+        "seek_professional_review",
+        "review_debt_schedule",
+        "review_cash_buffer",
+      ],
+    });
+
+    expect(fallbackActionIds).toEqual([
+      "set_cash_safety_rule",
+      "confirm_monthly_limit",
+      "schedule_monthly_checkin",
+    ]);
+    expect(plan.actions.map((action) => action.id)).toEqual([
+      "set_cash_safety_rule",
+      "review_debt_schedule",
       "schedule_monthly_checkin",
     ]);
   });
@@ -165,7 +290,7 @@ describe("private planning boundary", () => {
 
     expect(plan.actions).toHaveLength(3);
     expect(plan.actions.map((action) => action.id)).toContain(
-      "review_cash_buffer",
+      "review_long_term_structure",
     );
     expect(plan.actions.at(-1)?.id).toBe("schedule_monthly_checkin");
     expect(Object.keys(plan)).toEqual(["nextLevel", "actions", "progress"]);

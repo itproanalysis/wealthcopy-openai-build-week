@@ -27,6 +27,9 @@ Representative Codex Session ID: TODO
 - [ ] One selected category and a short English description
 - [ ] Public YouTube demo with audio; target 2:59 or less
 - [ ] Demo explains the product, Codex development process, and GPT-5.6 integration
+- [ ] Demo shows a non-L7 transition, explains L7 as maintenance, and demonstrates the whole L1–L7 journey
+- [ ] Demo shows `3/3 → status recheck → next transition` without claiming automatic wealth attainment
+- [ ] Demo shows the privacy-safe monthly-check-in ICS connection and describes PSID bands as self-selected references, not Korean verified ranks
 - [ ] Code repository URL
 - [ ] README covers setup, running, testing, and sample data
 - [ ] README covers Codex collaboration, key decisions, and GPT-5.6's contribution

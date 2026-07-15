@@ -10,7 +10,7 @@ import {
 
 describe("public plan contract", () => {
   it("exposes only the next level, three actions, and progress", () => {
-    const plan = projectPublicPlan([
+    const plan = projectPublicPlan("L2", [
       "review_cash_buffer",
       "confirm_monthly_limit",
       "schedule_monthly_checkin",
@@ -26,6 +26,7 @@ describe("public plan contract", () => {
   it("derives progress only from completed actions", () => {
     const completedIds = new Set<PublicActionId>(["review_cash_buffer"]);
     const plan = projectPublicPlan(
+      "L4",
       [
         "review_cash_buffer",
         "confirm_monthly_limit",
@@ -35,16 +36,17 @@ describe("public plan contract", () => {
     );
 
     expect(plan.progress).toBe(33);
-    expect(
-      recalculatePublicPlan({
-        ...plan,
-        actions: plan.actions.map((action) => ({
-          ...action,
-          completed: true,
-        })),
-        progress: 33,
-      } as typeof plan).progress,
-    ).toBe(100);
+    const recalculated = recalculatePublicPlan({
+      ...plan,
+      actions: plan.actions.map((action) => ({
+        ...action,
+        completed: true,
+      })),
+      progress: 33,
+    } as typeof plan);
+
+    expect(recalculated.progress).toBe(100);
+    expect(recalculated.nextLevel).toBe("L4");
   });
 
   it("rejects duplicate actions, extra fields, and invented progress", () => {
@@ -60,10 +62,36 @@ describe("public plan contract", () => {
     };
 
     expect(publicPlanSchema.safeParse(invalid).success).toBe(false);
+    expect(
+      publicPlanSchema.safeParse({
+        nextLevel: "L1",
+        actions: [
+          { id: "review_cash_buffer", completed: false },
+          { id: "confirm_monthly_limit", completed: false },
+          { id: "schedule_monthly_checkin", completed: false },
+        ],
+        progress: 0,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps the monthly check-in as the third public action", () => {
+    expect(
+      publicPlanSchema.safeParse({
+        nextLevel: "L5",
+        actions: [
+          { id: "schedule_monthly_checkin", completed: false },
+          { id: "confirm_monthly_limit", completed: false },
+          { id: "lock_monthly_execution_routine", completed: false },
+        ],
+        progress: 0,
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps completion only for actions shared with a regenerated plan", () => {
     const previous = projectPublicPlan(
+      "L7",
       [
         "review_cash_buffer",
         "review_debt_schedule",
@@ -75,7 +103,7 @@ describe("public plan contract", () => {
       ]),
     );
 
-    const next = carryCompletedActions(previous, [
+    const next = carryCompletedActions(previous, "L7", [
       "review_cash_buffer",
       "confirm_monthly_limit",
       "schedule_monthly_checkin",
@@ -87,5 +115,26 @@ describe("public plan contract", () => {
       false,
       false,
     ]);
+  });
+
+  it("does not carry completion into a different next level", () => {
+    const previous = projectPublicPlan(
+      "L3",
+      [
+        "review_cash_buffer",
+        "confirm_monthly_limit",
+        "schedule_monthly_checkin",
+      ],
+      new Set<PublicActionId>(["review_cash_buffer"]),
+    );
+
+    const next = carryCompletedActions(previous, "L4", [
+      "review_cash_buffer",
+      "confirm_debt_payment_calendar",
+      "schedule_monthly_checkin",
+    ]);
+
+    expect(next.progress).toBe(0);
+    expect(next.actions.every((action) => !action.completed)).toBe(true);
   });
 });

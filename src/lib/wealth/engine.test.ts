@@ -15,7 +15,6 @@ import { publicActionIdSchema } from "./public-plan";
 
 const balancedProfile: WealthProfile = {
   currentLevel: "L6",
-  targetLevel: "L7",
   incomeExecutionRatio: 35,
   assetPercentileBand: "p50_74",
   debtServiceRatio: 18,
@@ -31,13 +30,13 @@ describe("wealthProfileSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("restricts the demo to the reviewed L6 to L7 journey", () => {
-    const result = wealthProfileSchema.safeParse({
-      ...balancedProfile,
-      currentLevel: "L5",
-    });
-
-    expect(result.success).toBe(false);
+  it("accepts every supported current asset level", () => {
+    for (const currentLevel of ["L1", "L2", "L3", "L4", "L5", "L6", "L7"] as const) {
+      expect(
+        wealthProfileSchema.safeParse({ ...balancedProfile, currentLevel })
+          .success,
+      ).toBe(true);
+    }
   });
 });
 

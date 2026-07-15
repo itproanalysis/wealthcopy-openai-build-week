@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { assetLevelSchema } from "./asset-level";
 import { normalizedProfileSchema } from "./normalized-profile";
 import {
   INTERNAL_PATH_LIBRARY,
@@ -9,25 +10,16 @@ import {
 } from "./path-library";
 import type { PublicActionId } from "./public-plan";
 
-export const assetLevelSchema = z.enum([
-  "L1",
-  "L2",
-  "L3",
-  "L4",
-  "L5",
-  "L6",
-  "L7",
-]);
 export const pathTypeSchema = z.enum(INTERNAL_PATH_TYPES);
 
 export const wealthProfileSchema = normalizedProfileSchema
   .extend({
-    currentLevel: z.literal("L6"),
-    targetLevel: z.literal("L7"),
+    currentLevel: assetLevelSchema,
   })
   .strict();
 
-export type AssetLevel = z.infer<typeof assetLevelSchema>;
+export { assetLevelSchema } from "./asset-level";
+export type { AssetLevel } from "./asset-level";
 export type PathType = InternalPathType;
 export type WealthProfile = z.infer<typeof wealthProfileSchema>;
 
