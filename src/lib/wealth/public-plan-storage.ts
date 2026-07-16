@@ -8,22 +8,15 @@ import {
 import {
   projectPublicPlan,
   publicPlanSchema,
-  type PublicActionId,
   type PublicPlan,
 } from "./public-plan";
 
-export const DEFAULT_PUBLIC_ACTION_IDS: readonly PublicActionId[] = [
-  "review_cash_buffer",
-  "confirm_monthly_limit",
-  "schedule_monthly_checkin",
-];
-
-const storedPlanV4Schema = z
+const storedPlanV5Schema = z
   .object({
     monthKey: z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/),
     plan: publicPlanSchema,
     sourceLevel: assetLevelSchema,
-    version: z.literal(4),
+    version: z.literal(5),
   })
   .strict()
   .refine(
@@ -40,11 +33,11 @@ export function serializeStoredPlan(
   plan: PublicPlan,
 ) {
   return JSON.stringify(
-    storedPlanV4Schema.parse({
+    storedPlanV5Schema.parse({
       monthKey,
       plan,
       sourceLevel,
-      version: 4,
+      version: 5,
     }),
   );
 }
@@ -90,7 +83,7 @@ function parseStoredRecord<T>(
 }
 
 export function restoreStoredPlan(raw: string | null, currentMonth: string) {
-  const record = parseStoredRecord(raw, storedPlanV4Schema);
+  const record = parseStoredRecord(raw, storedPlanV5Schema);
   if (!record) return null;
 
   return restoreRecord(

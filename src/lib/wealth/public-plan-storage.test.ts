@@ -8,17 +8,17 @@ import {
 } from "./public-plan-storage";
 
 const actionIds = [
-  "review_cash_buffer",
-  "confirm_monthly_limit",
-  "schedule_monthly_checkin",
+  "build_cash_runway_rule",
+  "map_30_day_cashflow",
+  "verify_cashflow_balance",
 ] as const;
 
-describe("public plan storage v4", () => {
+describe("public plan storage v5", () => {
   it("restores only the strict current-month public plan contract", () => {
     const plan = projectPublicPlan(
       "L3",
       actionIds,
-      new Set(["review_cash_buffer"] as const),
+      new Set(["build_cash_runway_rule"] as const),
     );
     const raw = serializeStoredPlan("2026-07", "L2", plan);
     const restored = restoreStoredPlan(raw, "2026-07");
@@ -39,7 +39,7 @@ describe("public plan storage v4", () => {
     expect(JSON.parse(raw)).toMatchObject({
       monthKey: "2026-07",
       sourceLevel: "L2",
-      version: 4,
+      version: 5,
     });
   });
 
@@ -49,7 +49,7 @@ describe("public plan storage v4", () => {
       monthKey: "2026-07",
       plan: mismatchedPlan,
       sourceLevel: "L2",
-      version: 4,
+      version: 5,
     });
 
     expect(restoreStoredPlan(raw, "2026-07")).toBeNull();
@@ -80,7 +80,7 @@ describe("public plan storage v4", () => {
     const plan = projectPublicPlan(
       "L5",
       actionIds,
-      new Set(["review_cash_buffer", "confirm_monthly_limit"] as const),
+      new Set(["build_cash_runway_rule", "map_30_day_cashflow"] as const),
     );
     const restored = restoreStoredPlan(
       serializeStoredPlan("2026-06", "L4", plan),
@@ -115,8 +115,8 @@ describe("public plan storage v4", () => {
     expect(restored?.plan.progress).toBe(0);
   });
 
-  it("rejects all pre-v4 journey semantics", () => {
-    for (const version of [2, 3]) {
+  it("rejects all pre-v5 journey semantics, including v4", () => {
+    for (const version of [2, 3, 4]) {
       const raw = JSON.stringify({
         monthKey: "2026-07",
         plan: projectPublicPlan("L7", actionIds),
@@ -145,10 +145,41 @@ describe("public plan storage v4", () => {
         totalDebtKrw: 50_000_000,
       },
       sourceLevel: "L6",
-      version: 4,
+      version: 5,
     });
 
     expect(parseStoredPlan(raw, "2026-07")).toBeNull();
     expect(restoreStoredPlan(raw, "2026-07")).toBeNull();
+  });
+
+  it("serializes no ratios, PSID context, notes, profile, or exact amounts", () => {
+    const raw = serializeStoredPlan(
+      "2026-07",
+      "L6",
+      projectPublicPlan("L7", actionIds),
+    );
+    const forbiddenFragments = [
+      "profile",
+      "totalAssetsKrw",
+      "totalDebtKrw",
+      "incomeExecutionRatio",
+      "debtServiceRatio",
+      "assetPercentileBand",
+      "psid",
+      "constraintNote",
+      "notes",
+      "450000000",
+      "50000000",
+    ];
+
+    for (const fragment of forbiddenFragments) {
+      expect(raw.toLowerCase()).not.toContain(fragment.toLowerCase());
+    }
+    expect(Object.keys(JSON.parse(raw))).toEqual([
+      "monthKey",
+      "plan",
+      "sourceLevel",
+      "version",
+    ]);
   });
 });

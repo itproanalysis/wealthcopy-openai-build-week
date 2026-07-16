@@ -9,7 +9,7 @@
 | Region | `asia-northeast3` (Seoul) |
 | Cloud Run service | `wealth-copy` |
 | Initial revision | `wealth-copy-00001-lkh` |
-| Current verified revision | `wealth-copy-00002-jmh` (2026-07-16 premium UI refresh) |
+| Current verified revision | `wealth-copy-00003-9bq` (2026-07-16 action-policy v2 path release) |
 | Runtime identity | `wealth-copy-run@abis-web-platform.iam.gserviceaccount.com` |
 | Secret | `wealth-copy-openai-api-key` |
 | Model environment | `OPENAI_MODEL=gpt-5.6` |

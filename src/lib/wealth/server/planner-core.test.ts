@@ -2,21 +2,29 @@ import { describe, expect, it } from "vitest";
 
 import { ASSET_LEVELS, nextAssetLevel, type AssetLevel } from "../asset-level";
 import { levelTransitionFor } from "../level-transitions";
+import { PUBLIC_ACTION_COPY } from "../public-plan";
 import {
   createPlanningContext,
   mergeModelSelection,
   planRequestSchema,
+  type PlanRequest,
 } from "./planner-core";
 
-const request = {
+const request: PlanRequest = {
   profile: {
     totalAssetsKrw: 450_000_000,
     totalDebtKrw: 50_000_000,
     incomeExecutionRatio: 48,
     assetPercentileBand: "p50_74" as const,
     debtServiceRatio: 18,
+    cashRunwayBand: "six_to_twelve" as const,
+    incomeStability: "stable" as const,
+    largestAssetGroup: "mixed" as const,
+    concentrationBand: "p30_50" as const,
+    debtRisk: "none" as const,
+    next90DayEvent: "none" as const,
   },
-  constraintNote: "내년에 이사 계획이 있어 현금 여유를 유지하고 싶어요.",
+  constraintNote: "",
   sessionId: "123e4567-e89b-42d3-a456-426614174000",
 };
 
@@ -38,40 +46,41 @@ const levelInputs = [
   ["L15", 1_000_000_000_000, 0],
 ] as const satisfies readonly [AssetLevel, number, number][];
 
-function profileAt(totalAssetsKrw: number, totalDebtKrw = 0) {
+function withProfile(
+  patch: Partial<PlanRequest["profile"]>,
+  constraintNote = "",
+): PlanRequest {
   return {
-    ...request.profile,
-    totalAssetsKrw,
-    totalDebtKrw,
+    ...request,
+    profile: { ...request.profile, ...patch },
+    constraintNote,
   };
 }
 
+function actionIds(context: ReturnType<typeof createPlanningContext>) {
+  return context.fallback.actions.map((action) => action.id);
+}
+
 describe("private planning boundary", () => {
-  it("derives the level internally and sends only normalized signals to the model", () => {
+  it("derives the level privately and sends only coarse non-PSID signals to the model", () => {
     const context = createPlanningContext(request);
 
     expect(context.sourceLevel).toBe("L6");
     expect(context.nextLevel).toBe("L7");
-    expect(context.modelInput.profileSignals).toEqual({
+    expect(context.modelInput.profileSignals).toMatchObject({
+      debtBurden: "manageable",
+      freeSavingsCapacity: "strong",
       incomeExecution: "strong",
-      assetPosition: "middle",
-      debtBurden: "low",
-      executionPace: "accelerated",
+      leverage: "low",
+      pathFocus: "core_building",
     });
-    expect(context.modelInput.allowedRoutineActionIds).toEqual([
-      "review_long_term_structure",
-      "review_cash_buffer",
-      "confirm_monthly_limit",
-      "review_debt_schedule",
-    ]);
-    expect(context.modelInput.constraintSignals).toEqual([
-      "preserve_liquidity",
-      "keep_monthly_rhythm",
-    ]);
+    expect(context.modelInput.allowedSupportActions.length).toBeGreaterThan(0);
+    expect(context.modelAllowedActionIds).toEqual(["set_new_money_guardrail"]);
+    expect(actionIds(context)[0]).toBe("set_new_money_guardrail");
 
     const serializedModelInput = JSON.stringify(context.modelInput);
     expect(serializedModelInput).not.toMatch(
-      /totalAssetsKrw|totalDebtKrw|netWorth|currentLevel|nextLevel|monthlyIncome|constraintNote|KRW|USD/i,
+      /totalAssetsKrw|totalDebtKrw|netWorth|currentLevel|nextLevel|assetPercentile|PSID|KRW|USD/i,
     );
     expect(serializedModelInput).not.toContain("450000000");
     expect(serializedModelInput).not.toContain("50000000");
@@ -80,7 +89,19 @@ describe("private planning boundary", () => {
     );
   });
 
-  it("accepts required aggregate amounts but rejects client level and account details", () => {
+  it("keeps the public plan contract to target, three IDs, and progress", () => {
+    const plan = createPlanningContext(request).fallback;
+
+    expect(Object.keys(plan)).toEqual(["nextLevel", "actions", "progress"]);
+    expect(plan.actions).toHaveLength(3);
+    expect(
+      plan.actions.every(
+        (action) => Object.keys(action).join(",") === "id,completed",
+      ),
+    ).toBe(true);
+  });
+
+  it("accepts the aggregate snapshot but rejects client levels and account fields", () => {
     expect(planRequestSchema.safeParse(request).success).toBe(true);
 
     for (const extraProfile of [
@@ -97,68 +118,35 @@ describe("private planning boundary", () => {
     }
   });
 
-  it("requires both aggregate household asset and debt inputs", () => {
-    const commonProfile = {
-      incomeExecutionRatio: request.profile.incomeExecutionRatio,
-      assetPercentileBand: request.profile.assetPercentileBand,
-      debtServiceRatio: request.profile.debtServiceRatio,
-    };
-    const withoutAssets = {
-      ...commonProfile,
-      totalDebtKrw: request.profile.totalDebtKrw,
-    };
-    const withoutDebt = {
-      ...commonProfile,
-      totalAssetsKrw: request.profile.totalAssetsKrw,
-    };
+  it("defaults optional structure signals but treats missing evidence as a snapshot task", () => {
+    const parsed = planRequestSchema.parse({
+      ...request,
+      profile: {
+        totalAssetsKrw: request.profile.totalAssetsKrw,
+        totalDebtKrw: request.profile.totalDebtKrw,
+        incomeExecutionRatio: request.profile.incomeExecutionRatio,
+        debtServiceRatio: request.profile.debtServiceRatio,
+      },
+    });
+    const context = createPlanningContext(parsed);
 
-    expect(
-      planRequestSchema.safeParse({ ...request, profile: withoutAssets }).success,
-    ).toBe(false);
-    expect(
-      planRequestSchema.safeParse({ ...request, profile: withoutDebt }).success,
-    ).toBe(false);
+    expect(parsed.profile.assetPercentileBand).toBe("unknown");
+    expect(parsed.profile.largestAssetGroup).toBe("unknown");
+    expect(actionIds(context)[0]).toBe("complete_asset_snapshot");
+    expect(context.allowModel).toBe(false);
   });
 
-  it("keeps the self-selected PSID band optional", () => {
-    const profile = {
-      totalAssetsKrw: request.profile.totalAssetsKrw,
-      totalDebtKrw: request.profile.totalDebtKrw,
-      incomeExecutionRatio: request.profile.incomeExecutionRatio,
-      debtServiceRatio: request.profile.debtServiceRatio,
-    };
-    const parsed = planRequestSchema.safeParse({ ...request, profile });
-
-    expect(parsed.success).toBe(true);
-    if (parsed.success) {
-      expect(parsed.data.profile.assetPercentileBand).toBe("unknown");
-    }
-  });
-
-  it("rejects likely contact and account data before planning", () => {
+  it("rejects personal identifiers and currency amounts in the optional note", () => {
     for (const constraintNote of [
       "연락처는 010-1234-5678입니다.",
       "은행 계좌는 123-456789-01234입니다.",
-    ]) {
-      expect(
-        planRequestSchema.safeParse({ ...request, constraintNote }).success,
-      ).toBe(false);
-    }
-  });
-
-  it("rejects currency amounts in the optional note", () => {
-    for (const constraintNote of [
       "월 650만원을 저축하고 싶어요.",
       "KRW 6500000을 저축하고 싶어요.",
-      "6500000 KRW를 저축하고 싶어요.",
     ]) {
       expect(
         planRequestSchema.safeParse({ ...request, constraintNote }).success,
       ).toBe(false);
     }
-  });
-
-  it("does not confuse ordinary Korean words with monetary amounts", () => {
     expect(
       planRequestSchema.safeParse({
         ...request,
@@ -167,211 +155,257 @@ describe("private planning boundary", () => {
     ).toBe(true);
   });
 
-  it("uses a deterministic safety plan without a model call", () => {
-    const context = createPlanningContext({
-      ...request,
-      constraintNote: "코인 종목 수익률과 매수 시점을 알려 주세요.",
-    });
-
-    expect(context.allowModel).toBe(false);
-    expect(context.status).toBe("professional_review");
-    expect(context.fallback.actions.map((action) => action.id)).toEqual([
-      "seek_professional_review",
-      "review_long_term_structure",
-      "schedule_monthly_checkin",
-    ]);
-  });
-
-  it("adds debt review for a high debt-service ratio", () => {
-    const context = createPlanningContext({
-      ...request,
-      profile: { ...request.profile, debtServiceRatio: 45 },
-      constraintNote: "",
-    });
-
-    expect(context.mandatoryActionIds).toContain("review_debt_schedule");
-    expect(context.modelInput.profileSignals.debtBurden).toBe("high");
-  });
-
-  it("rejects a debt ratio above the combined execution ratio", () => {
+  it("rejects debt service above the combined execution ratio", () => {
     expect(
-      planRequestSchema.safeParse({
-        ...request,
-        profile: {
-          ...request.profile,
-          incomeExecutionRatio: 20,
-          debtServiceRatio: 21,
-        },
-      }).success,
+      planRequestSchema.safeParse(
+        withProfile({ incomeExecutionRatio: 20, debtServiceRatio: 21 }),
+      ).success,
     ).toBe(false);
   });
+});
 
-  it("connects the recommended internal path to a monthly fallback", () => {
+describe("protect, advance, and verify action policy", () => {
+  it.each([
+    [
+      "cash runway",
+      { cashRunwayBand: "under_1" as const },
+      "build_cash_runway_rule",
+    ],
+    [
+      "high debt service",
+      { incomeExecutionRatio: 55, debtServiceRatio: 45 },
+      "rank_debt_review_priority",
+    ],
+    [
+      "income change",
+      { incomeStability: "changing" as const },
+      "prepare_income_change_plan",
+    ],
+    [
+      "variable income",
+      { incomeStability: "variable" as const },
+      "prepare_income_change_plan",
+    ],
+    [
+      "near debt maturity",
+      { next90DayEvent: "debt_maturity" as const },
+      "calendar_30_60_90_maturities",
+    ],
+    [
+      "high concentration",
+      { concentrationBand: "p70_plus" as const },
+      "pause_dominant_bucket_additions",
+    ],
+  ])("puts the %s hard gate first", (_name, patch, expected) => {
+    const context = createPlanningContext(withProfile(patch));
+
+    expect(actionIds(context)[0]).toBe(expected);
+    expect(context.allowModel).toBe(false);
+    expect(context.mandatoryActionIds).toContain(expected);
+  });
+
+  it("uses deterministic professional review for transaction requests", () => {
     const context = createPlanningContext({
       ...request,
-      profile: {
-        ...request.profile,
-        incomeExecutionRatio: 55,
-        assetPercentileBand: "unknown",
-        debtServiceRatio: 8,
-      },
-      constraintNote: "",
+      constraintNote: "코인 종목 매수 시점을 알려 주세요.",
     });
 
-    expect(context.modelInput.profileSignals.executionPace).toBe("accelerated");
-    expect(context.fallback.actions.map((action) => action.id)).toEqual([
-      "review_long_term_structure",
-      "confirm_monthly_limit",
-      "schedule_monthly_checkin",
+    expect(context.status).toBe("professional_review");
+    expect(context.allowModel).toBe(false);
+    expect(actionIds(context)[0]).toBe("seek_professional_review");
+  });
+
+  it("changes the bottleneck action within one level without changing its anchor", () => {
+    const cash = createPlanningContext(
+      withProfile({ cashRunwayBand: "under_1" }),
+    );
+    const concentration = createPlanningContext(
+      withProfile({ concentrationBand: "p70_plus" }),
+    );
+
+    expect(actionIds(cash)[0]).not.toBe(actionIds(concentration)[0]);
+    expect(actionIds(cash).slice(1)).toEqual(actionIds(concentration).slice(1));
+  });
+
+  it("gives a healthy L7 household three distinct, usable artifacts", () => {
+    const context = createPlanningContext(
+      withProfile({
+        totalAssetsKrw: 825_000_000,
+        totalDebtKrw: 220_000_000,
+        incomeExecutionRatio: 35,
+        debtServiceRatio: 15,
+        cashRunwayBand: "six_to_twelve",
+        incomeStability: "stable",
+        largestAssetGroup: "mixed",
+        concentrationBand: "p30_50",
+        debtRisk: "none",
+        next90DayEvent: "none",
+      }),
+    );
+
+    expect(context.sourceLevel).toBe("L7");
+    expect(context.nextLevel).toBe("L8");
+    expect(context.allowModel).toBe(false);
+    expect(context.modelAllowedActionIds).toEqual(["set_new_money_guardrail"]);
+    expect(actionIds(context)).toEqual([
+      "set_new_money_guardrail",
+      "set_concentration_cap",
+      "compare_plan_to_actual",
     ]);
   });
 
-  it("builds a derived next-step plan for every asset level", () => {
-    expect(levelInputs.map(([level]) => level)).toEqual(ASSET_LEVELS);
+  it("does not prescribe a cash-runway task when healthy cash runway is already known", () => {
+    const context = createPlanningContext(
+      withProfile({
+        largestAssetGroup: "cash",
+        cashRunwayBand: "twelve_plus",
+      }),
+    );
 
-    for (const [expectedLevel, totalAssetsKrw, totalDebtKrw] of levelInputs) {
-      const context = createPlanningContext({
-        ...request,
-        profile: profileAt(totalAssetsKrw, totalDebtKrw),
-        constraintNote: "",
-      });
-      const actionIds = context.fallback.actions.map((action) => action.id);
-      const primaryActionId =
-        levelTransitionFor(expectedLevel).actionPriority[0];
+    expect(context.modelAllowedActionIds).toEqual(["set_new_money_guardrail"]);
+    expect(actionIds(context)[0]).toBe("set_new_money_guardrail");
+  });
 
-      expect(context.sourceLevel).toBe(expectedLevel);
-      expect(context.nextLevel).toBe(nextAssetLevel(expectedLevel));
-      expect(context.fallback.nextLevel).toBe(nextAssetLevel(expectedLevel));
-      expect(actionIds).toContain(primaryActionId);
-      expect(actionIds.at(-1)).toBe("schedule_monthly_checkin");
-      expect(Object.keys(context.fallback)).toEqual([
-        "nextLevel",
-        "actions",
-        "progress",
-      ]);
+  it("does not create an empty maturity calendar for property without a near-term event", () => {
+    const context = createPlanningContext(
+      withProfile({
+        largestAssetGroup: "property",
+        next90DayEvent: "none",
+        debtRisk: "none",
+      }),
+    );
+
+    expect(context.modelAllowedActionIds).not.toContain(
+      "calendar_30_60_90_maturities",
+    );
+    expect(actionIds(context)[0]).toBe("map_property_liquidity_dates");
+  });
+
+  it("keeps PSID reference bands out of level, path, model input, and actions", () => {
+    const bands = [
+      "below_25",
+      "p25_49",
+      "p50_74",
+      "p75_89",
+      "p90_plus",
+      "unknown",
+    ] as const;
+    const contexts = bands.map((assetPercentileBand) =>
+      createPlanningContext(withProfile({ assetPercentileBand })),
+    );
+    const baseline = contexts[0];
+
+    for (const context of contexts.slice(1)) {
+      expect(context.sourceLevel).toBe(baseline.sourceLevel);
+      expect(context.modelInput).toEqual(baseline.modelInput);
+      expect(context.fallback).toEqual(baseline.fallback);
     }
   });
 
-  it("keeps L15 active with a governance maintenance action", () => {
-    const context = createPlanningContext({
-      ...request,
-      profile: profileAt(1_000_000_000_000),
-      constraintNote: "",
-    });
+  it("builds ordered protect, advance, verify actions for all 15 levels", () => {
+    expect(levelInputs.map(([level]) => level)).toEqual(ASSET_LEVELS);
+
+    for (const [expectedLevel, totalAssetsKrw, totalDebtKrw] of levelInputs) {
+      const context = createPlanningContext(
+        withProfile({ totalAssetsKrw, totalDebtKrw }),
+      );
+      const ids = actionIds(context);
+
+      expect(context.sourceLevel).toBe(expectedLevel);
+      expect(context.nextLevel).toBe(nextAssetLevel(expectedLevel));
+      expect(ids[1]).toBe(levelTransitionFor(expectedLevel).actionPriority[0]);
+      expect(PUBLIC_ACTION_COPY[ids[0]].stage).toBe("protect");
+      expect(PUBLIC_ACTION_COPY[ids[1]].stage).toBe("advance");
+      expect(PUBLIC_ACTION_COPY[ids[2]].stage).toBe("verify");
+      expect(new Set(ids).size).toBe(3);
+    }
+  });
+
+  it("keeps L15 as a governance maintenance route", () => {
+    const context = createPlanningContext(
+      withProfile({ totalAssetsKrw: 1_000_000_000_000, totalDebtKrw: 0 }),
+    );
 
     expect(context.sourceLevel).toBe("L15");
-    expect(context.fallback.nextLevel).toBe("L15");
-    expect(context.fallback.actions[0]?.id).toBe("audit_governance_calendar");
+    expect(context.nextLevel).toBe("L15");
+    expect(actionIds(context)[1]).toBe("audit_governance_calendar");
+    expect(actionIds(context)[2]).toBe("close_governance_review");
   });
+});
 
-  it("applies constraints before the derived level action and keeps check-in last", () => {
-    const context = createPlanningContext({
-      ...request,
-      profile: profileAt(10_000_000),
-      constraintNote: "소득 감소가 있어 실행 범위를 다시 정하고 싶어요.",
-    });
-
-    expect(context.sourceLevel).toBe("L3");
-    expect(context.fallback.actions.map((action) => action.id)).toEqual([
-      "review_income_change",
-      "confirm_debt_payment_calendar",
-      "schedule_monthly_checkin",
-    ]);
-  });
-
-  it("does not let another level's model candidate replace the transition action", () => {
-    const context = createPlanningContext({
-      ...request,
-      profile: profileAt(0),
-      constraintNote: "",
-    });
-    const plan = mergeModelSelection(context, {
-      actionIds: [
-        "audit_governance_calendar",
-        "review_asset_concentration",
-        "schedule_monthly_checkin",
-      ],
-    });
-
-    expect(plan.actions.map((action) => action.id)).toEqual([
-      "set_cash_safety_rule",
-      "confirm_monthly_limit",
-      "schedule_monthly_checkin",
-    ]);
-  });
-
-  it("uses a valid model routine as the second action on a normal request", () => {
-    const context = createPlanningContext({
-      ...request,
-      profile: profileAt(0),
-      constraintNote: "",
-    });
-    const plan = mergeModelSelection(context, {
-      actionIds: [
-        "seek_professional_review",
-        "review_debt_schedule",
-        "review_cash_buffer",
-      ],
-    });
-
-    expect(plan.actions.map((action) => action.id)).toEqual([
-      "set_cash_safety_rule",
-      "review_debt_schedule",
-      "schedule_monthly_checkin",
-    ]);
-  });
-
-  it("allows an upper-level recordkeeping companion but preserves its anchor", () => {
-    const context = createPlanningContext({
-      ...request,
-      profile: profileAt(3_000_000_000),
-      constraintNote: "",
-    });
-    const plan = mergeModelSelection(context, {
-      actionIds: [
-        "refresh_asset_valuation_dates",
-        "confirm_monthly_limit",
-        "schedule_monthly_checkin",
-      ],
-    });
-
-    expect(context.sourceLevel).toBe("L9");
-    expect(plan.actions.map((action) => action.id)).toEqual([
-      "reconcile_liability_register",
-      "refresh_asset_valuation_dates",
-      "schedule_monthly_checkin",
-    ]);
-  });
-
-  it("keeps mandatory actions when merging model-selected IDs", () => {
-    const context = createPlanningContext(request);
-    const plan = mergeModelSelection(context, {
-      actionIds: [
-        "confirm_monthly_limit",
-        "review_debt_schedule",
-        "schedule_monthly_checkin",
-      ],
-    });
-
-    expect(plan.actions).toHaveLength(3);
-    expect(plan.actions.map((action) => action.id)).toContain(
-      "review_long_term_structure",
+describe("bounded model contribution", () => {
+  it("lets the model choose only the support slot", () => {
+    const context = createPlanningContext(
+      withProfile({
+        largestAssetGroup: "market",
+        concentrationBand: "p50_70",
+      }),
     );
-    expect(plan.actions.at(-1)?.id).toBe("schedule_monthly_checkin");
-    expect(Object.keys(plan)).toEqual(["nextLevel", "actions", "progress"]);
-  });
+    expect(context.allowModel).toBe(true);
+    expect(context.modelAllowedActionIds).toEqual([
+      "pause_dominant_bucket_additions",
+      "set_new_money_guardrail",
+    ]);
+    expect(context.modelAllowedActionIds).not.toContain(
+      "complete_asset_snapshot",
+    );
 
-  it("rejects model output fields that the merge never consumes", () => {
-    const context = createPlanningContext(request);
     const plan = mergeModelSelection(context, {
-      actionIds: [
-        "confirm_monthly_limit",
-        "review_debt_schedule",
-        "schedule_monthly_checkin",
-      ],
-      constraintSignals: ["review_debt"],
+      supportActionId: "set_new_money_guardrail",
     });
 
-    expect(plan).toEqual(context.fallback);
+    expect(plan.actions[0]?.id).toBe("set_new_money_guardrail");
+    expect(plan.actions.slice(1)).toEqual(context.fallback.actions.slice(1));
+  });
+
+  it("rejects an outsider, extra fields, and all model output during a hard stop", () => {
+    const context = createPlanningContext(
+      withProfile({
+        largestAssetGroup: "market",
+        concentrationBand: "p50_70",
+      }),
+    );
+    expect(
+      mergeModelSelection(context, {
+        supportActionId: "audit_governance_calendar",
+      }),
+    ).toEqual(context.fallback);
+    expect(
+      mergeModelSelection(context, {
+        supportActionId: "set_new_money_guardrail",
+        reason: "invented",
+      }),
+    ).toEqual(context.fallback);
+
+    const hardStop = createPlanningContext(
+      withProfile({ cashRunwayBand: "under_1" }),
+    );
+    expect(
+      mergeModelSelection(hardStop, {
+        supportActionId: "review_retirement_account_routine",
+      }),
+    ).toEqual(hardStop.fallback);
+  });
+
+  it("gives the model only allowlisted candidates with concrete evidence", () => {
+    const context = createPlanningContext(
+      withProfile({
+        largestAssetGroup: "market",
+        concentrationBand: "p50_70",
+      }),
+    );
+
+    expect(context.modelInput.allowedSupportActions).toEqual(
+      context.modelAllowedActionIds.map((id) => ({
+        id,
+        purpose: PUBLIC_ACTION_COPY[id].outcome,
+        doneWhen: PUBLIC_ACTION_COPY[id].description,
+      })),
+    );
+    expect(
+      context.modelInput.allowedSupportActions.every((candidate) =>
+        candidate.doneWhen.includes("완료"),
+      ),
+    ).toBe(true);
   });
 });

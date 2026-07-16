@@ -26,25 +26,46 @@ import {
   nextAssetLevel,
   type AssetLevel,
 } from "@/lib/wealth/asset-level";
-import { createMonthlyCheckinCalendar } from "@/lib/wealth/monthly-checkin-calendar";
-import type { PsidAssetPercentileBand } from "@/lib/wealth/normalized-profile";
+import type {
+  CashRunwayBand,
+  ConcentrationBand,
+  DebtRisk,
+  IncomeStability,
+  LargestAssetGroup,
+  Next90DayEvent,
+  PsidAssetPercentileBand,
+} from "@/lib/wealth/normalized-profile";
 
 import { WealthLogo } from "./logo";
 
 type SetupProfile = {
   totalAssetsEok: number | "";
   totalDebtEok: number | "";
+  cashRunwayBand: CashRunwayBand;
+  incomeStability: IncomeStability;
+  largestAssetGroup: LargestAssetGroup;
+  concentrationBand: ConcentrationBand;
   incomeExecutionRatio: number | "";
   assetPercentileBand: PsidAssetPercentileBand;
   debtServiceRatio: number | "";
+  debtRisk: DebtRisk;
+  next90DayEvent: Next90DayEvent;
 };
 
 type ActionSignals = Pick<
   SetupProfile,
-  "incomeExecutionRatio" | "assetPercentileBand" | "debtServiceRatio"
+  | "cashRunwayBand"
+  | "incomeStability"
+  | "largestAssetGroup"
+  | "concentrationBand"
+  | "incomeExecutionRatio"
+  | "assetPercentileBand"
+  | "debtServiceRatio"
+  | "debtRisk"
+  | "next90DayEvent"
 >;
 
-type SetupStep = 1 | 2;
+type SetupStep = 1 | 2 | 3;
 
 type ApiErrorBody = {
   error?: string;
@@ -52,8 +73,9 @@ type ApiErrorBody = {
 
 class UserFacingPlanError extends Error {}
 
-const PLAN_STORAGE_KEY = "wealthcopy-public-plan-v4";
+const PLAN_STORAGE_KEY = "wealthcopy-public-plan-v5";
 const DEPRECATED_PLAN_STORAGE_KEYS = [
+  "wealthcopy-public-plan-v4",
   "wealthcopy-public-plan-v3",
   "wealthcopy-public-plan-v2",
   "wealthcopy-demo-plan-v1",
@@ -63,15 +85,27 @@ const SESSION_STORAGE_KEY = "wealthcopy-anonymous-session";
 const INITIAL_PROFILE: SetupProfile = {
   totalAssetsEok: "",
   totalDebtEok: "",
+  cashRunwayBand: "unknown",
+  incomeStability: "unknown",
+  largestAssetGroup: "unknown",
+  concentrationBand: "unknown",
   incomeExecutionRatio: "",
   assetPercentileBand: "unknown",
   debtServiceRatio: "",
+  debtRisk: "unknown",
+  next90DayEvent: "unknown",
 };
 
 const INITIAL_NOTE = "";
 
 const inputClass =
   "h-14 w-full rounded-xl border border-[#cbd2cd] bg-[#fffefa] px-4 pr-16 text-[15px] font-semibold text-[#10251f] outline-none transition-[border-color,box-shadow,background-color] duration-200 placeholder:font-normal placeholder:text-[#68746f] hover:border-[#9da9a3] focus:border-[#0d705f] focus:bg-white focus:ring-4 focus:ring-[#0d705f]/12";
+
+const ACTION_STAGE_LABELS = {
+  protect: "기반 보호",
+  advance: "다음 단계",
+  verify: "결과 확인",
+} as const;
 
 const KRW_PER_EOK = 100_000_000;
 const MAX_EOK_INPUT =
@@ -122,6 +156,12 @@ export function WealthCopyApp() {
   const [isRestoring, setIsRestoring] = useState(true);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
+  const [clearConfirmationArmed, setClearConfirmationArmed] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<{
+    actionId: PublicActionId;
+    copied: boolean;
+    message: string;
+  } | null>(null);
   const [calendarNow, setCalendarNow] = useState(() => new Date());
   const [journeySourceLevel, setJourneySourceLevel] =
     useState<AssetLevel | null>(null);
@@ -130,6 +170,7 @@ export function WealthCopyApp() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const totalAssetsInputRef = useRef<HTMLInputElement>(null);
   const totalDebtInputRef = useRef<HTMLInputElement>(null);
+  const firstStructureInputRef = useRef<HTMLSelectElement>(null);
   const executionRatioInputRef = useRef<HTMLInputElement>(null);
   const debtRatioInputRef = useRef<HTMLInputElement>(null);
   const firstActionInputRef = useRef<HTMLInputElement>(null);
@@ -355,15 +396,28 @@ export function WealthCopyApp() {
 
   function handleSetupContinue(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!validateAssetSnapshot()) return;
+    if (setupStep === 1) {
+      if (!validateAssetSnapshot()) return;
+
+      setSetupError(null);
+      setSetupStep(2);
+      window.setTimeout(() => firstStructureInputRef.current?.focus(), 0);
+      return;
+    }
 
     setSetupError(null);
-    setSetupStep(2);
+    setSetupStep(3);
     window.setTimeout(() => executionRatioInputRef.current?.focus(), 0);
   }
 
-  function returnToAssetSnapshot() {
+  function returnToPreviousSetupStep() {
     setSetupError(null);
+    if (setupStep === 3) {
+      setSetupStep(2);
+      window.setTimeout(() => firstStructureInputRef.current?.focus(), 0);
+      return;
+    }
+
     setSetupStep(1);
     window.setTimeout(() => totalAssetsInputRef.current?.focus(), 0);
   }
@@ -376,9 +430,15 @@ export function WealthCopyApp() {
     const {
       totalAssetsEok,
       totalDebtEok,
+      cashRunwayBand,
+      incomeStability,
+      largestAssetGroup,
+      concentrationBand,
       incomeExecutionRatio,
       assetPercentileBand,
       debtServiceRatio,
+      debtRisk,
+      next90DayEvent,
     } = profile;
     if (!validateAssetSnapshot()) return;
     if (totalAssetsEok === "" || totalDebtEok === "") return;
@@ -443,9 +503,15 @@ export function WealthCopyApp() {
           profile: {
             totalAssetsKrw,
             totalDebtKrw,
+            cashRunwayBand,
+            incomeStability,
+            largestAssetGroup,
+            concentrationBand,
             incomeExecutionRatio,
             assetPercentileBand,
             debtServiceRatio,
+            debtRisk,
+            next90DayEvent,
           },
           constraintNote,
           sessionId: getSessionId(),
@@ -503,11 +569,18 @@ export function WealthCopyApp() {
       );
 
       lastActionSignalsRef.current = {
+        cashRunwayBand,
+        incomeStability,
+        largestAssetGroup,
+        concentrationBand,
         incomeExecutionRatio,
         assetPercentileBand,
         debtServiceRatio,
+        debtRisk,
+        next90DayEvent,
       };
       focusNewPlanRef.current = true;
+      setCopyFeedback(null);
       setPlan(nextPlan);
       setJourneySourceLevel(sourceLevel);
       setProfile(null);
@@ -564,29 +637,44 @@ export function WealthCopyApp() {
     );
   }
 
-  function downloadMonthlyCheckin() {
-    const calendar = createMonthlyCheckinCalendar(currentMonth);
-    const objectUrl = window.URL.createObjectURL(
-      new Blob([calendar.content], { type: calendar.mimeType }),
-    );
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = calendar.filename;
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 0);
-    setStatusMessage(
-      "월말 점검 일정 파일을 준비했어요. 캘린더에 추가한 뒤 행동을 완료해 주세요.",
-    );
+  async function copyActionChecklist(actionId: PublicActionId) {
+    const actionCopy = PUBLIC_ACTION_COPY[actionId];
+    const checklist = [
+      `WealthCopy · ${ACTION_STAGE_LABELS[actionCopy.stage]}`,
+      actionCopy.title,
+      `남는 결과: ${actionCopy.outcome}`,
+      `완료 기준: ${actionCopy.description}`,
+      "실행 순서",
+      ...actionCopy.steps.map((step, index) => `${index + 1}. ${step}`),
+    ].join("\n");
+
+    if (!navigator.clipboard?.writeText) {
+      const message =
+        "이 브라우저에서는 복사를 사용할 수 없어요. 펼친 순서를 직접 기록해 주세요.";
+      setCopyFeedback({ actionId, copied: false, message });
+      setStatusMessage(message);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(checklist);
+      const message = `${actionCopy.title} 체크리스트를 복사했어요.`;
+      setCopyFeedback({ actionId, copied: true, message });
+      setStatusMessage(message);
+    } catch {
+      const message =
+        "체크리스트를 복사하지 못했어요. 펼친 순서를 직접 기록해 주세요.";
+      setCopyFeedback({ actionId, copied: false, message });
+      setStatusMessage(message);
+    }
   }
 
   function clearPlan() {
-    if (
-      !window.confirm(
-        "이번 달 행동과 완료 기록을 지울까요? 이 작업은 되돌릴 수 없어요.",
-      )
-    ) {
+    if (!clearConfirmationArmed) {
+      setClearConfirmationArmed(true);
+      setStatusMessage(
+        "이번 달 기록을 지우려면 ‘정말 지우기’를 한 번 더 눌러 주세요.",
+      );
       return;
     }
 
@@ -595,6 +683,8 @@ export function WealthCopyApp() {
       window.localStorage.removeItem(key),
     );
     lastActionSignalsRef.current = null;
+    setCopyFeedback(null);
+    setClearConfirmationArmed(false);
     setPlan(null);
     setJourneySourceLevel(null);
     setStatusMessage("이번 달 행동 기록을 지웠어요.");
@@ -856,18 +946,15 @@ export function WealthCopyApp() {
                             0{index + 1}
                           </span>
                           <span className="min-w-0">
+                            <span className="mb-1.5 block text-[10px] font-semibold tracking-[0.12em] text-[#0d705f]">
+                              {ACTION_STAGE_LABELS[actionCopy.stage]}
+                            </span>
                             <span
                               className={`block text-base font-semibold tracking-[-0.02em] sm:text-lg ${
                                 completed ? "text-[#596862]" : "text-[#10251f]"
                               }`}
                             >
                               {actionCopy.title}
-                            </span>
-                            <span className="mt-1.5 block text-sm leading-6 text-[#596862]">
-                              <strong className="mr-1 font-semibold text-[#40534b]">
-                                완료 기준 ·
-                              </strong>
-                              {actionCopy.description}
                             </span>
                           </span>
                           <span className="flex flex-col items-end gap-2">
@@ -890,15 +977,76 @@ export function WealthCopyApp() {
                             </span>
                           </span>
                         </label>
-                        {actionId === "schedule_monthly_checkin" ? (
-                          <button
-                            className="ml-[3rem] mt-3 min-h-11 rounded-lg px-3 text-xs font-semibold text-[#0d705f] underline decoration-[#9dbbb0] underline-offset-4 transition-colors hover:bg-[#e7f0ec] sm:ml-[4.25rem]"
-                            onClick={downloadMonthlyCheckin}
-                            type="button"
-                          >
-                            캘린더에 월말 점검 추가
-                          </button>
-                        ) : null}
+                        <div className="ml-[3rem] mt-4 grid gap-3 sm:ml-[4.25rem] sm:grid-cols-2">
+                          <div className="rounded-xl border border-[#d9ddd8] bg-white/75 px-4 py-3">
+                            <p className="text-[10px] font-semibold tracking-[0.1em] text-[#68756f]">
+                              남는 결과
+                            </p>
+                            <p className="mt-1.5 text-sm font-semibold leading-6 text-[#29483e]">
+                              {actionCopy.outcome}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-[#d9ddd8] bg-white/75 px-4 py-3">
+                            <p className="text-[10px] font-semibold tracking-[0.1em] text-[#68756f]">
+                              완료 기준
+                            </p>
+                            <p className="mt-1.5 text-sm leading-6 text-[#40534b]">
+                              {actionCopy.description}
+                            </p>
+                          </div>
+                        </div>
+                        <details className="group ml-[3rem] mt-3 rounded-xl border border-[#d9ddd8] bg-[#fafbf8] px-4 py-3 sm:ml-[4.25rem]">
+                          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-[#29483e] marker:hidden">
+                            <span>실행 순서</span>
+                            <span className="text-xs font-medium text-[#68756f] group-open:hidden">
+                              3단계 펼치기
+                            </span>
+                            <span className="hidden text-xs font-medium text-[#68756f] group-open:inline">
+                              접기
+                            </span>
+                          </summary>
+                          <ol className="mt-2 space-y-3 border-t border-[#d9ddd8] pt-4">
+                            {actionCopy.steps.map((step, stepIndex) => (
+                              <li
+                                className="grid grid-cols-[1.75rem_1fr] gap-3 text-sm leading-6 text-[#40534b]"
+                                key={`${actionId}-${stepIndex}`}
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className="grid size-7 place-items-center rounded-full bg-[#e3eee9] font-mono text-[11px] font-semibold text-[#0d705f]"
+                                >
+                                  {stepIndex + 1}
+                                </span>
+                                <span>{step}</span>
+                              </li>
+                            ))}
+                          </ol>
+                          <div className="mt-4 border-t border-[#d9ddd8] pt-3">
+                            <button
+                              className="min-h-11 rounded-lg px-3 text-xs font-semibold text-[#0d705f] underline decoration-[#9dbbb0] underline-offset-4 transition-colors hover:bg-[#e7f0ec] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0d705f]/16"
+                              onClick={() => void copyActionChecklist(actionId)}
+                              type="button"
+                            >
+                              {copyFeedback?.actionId === actionId &&
+                              copyFeedback.copied
+                                ? "체크리스트 복사됨"
+                                : "체크리스트 복사"}
+                            </button>
+                            {copyFeedback?.actionId === actionId ? (
+                              <p
+                                aria-live="polite"
+                                className={`mt-1 text-xs leading-5 ${
+                                  copyFeedback.copied
+                                    ? "text-[#3d5c51]"
+                                    : "text-[#8b4037]"
+                                }`}
+                                role="status"
+                              >
+                                {copyFeedback.message}
+                              </p>
+                            ) : null}
+                          </div>
+                        </details>
                       </li>
                     );
                   })}
@@ -930,13 +1078,33 @@ export function WealthCopyApp() {
               대신하지 않습니다.
             </p>
             {plan ? (
-              <button
-                className="min-h-11 self-start px-1 text-xs font-semibold text-[#51635c] underline decoration-[#aeb9b4] underline-offset-4 sm:self-auto"
-                onClick={clearPlan}
-                type="button"
-              >
-                이번 달 기록 지우기
-              </button>
+              <div className="flex min-h-11 items-center gap-4 self-start sm:self-auto">
+                <button
+                  className={`min-h-11 px-1 text-xs font-semibold underline underline-offset-4 ${
+                    clearConfirmationArmed
+                      ? "text-[#9f3f35] decoration-[#d5a8a2]"
+                      : "text-[#51635c] decoration-[#aeb9b4]"
+                  }`}
+                  onClick={clearPlan}
+                  type="button"
+                >
+                  {clearConfirmationArmed
+                    ? "정말 지우기"
+                    : "이번 달 기록 지우기"}
+                </button>
+                {clearConfirmationArmed ? (
+                  <button
+                    className="min-h-11 px-1 text-xs font-semibold text-[#51635c]"
+                    onClick={() => {
+                      setClearConfirmationArmed(false);
+                      setStatusMessage("기록 지우기를 취소했어요.");
+                    }}
+                    type="button"
+                  >
+                    취소
+                  </button>
+                ) : null}
+              </div>
             ) : null}
           </div>
 
@@ -967,13 +1135,17 @@ export function WealthCopyApp() {
               <div className="flex items-start justify-between gap-5">
               <div>
                 <p className="text-xs font-semibold tracking-[0.1em] text-[#0d705f]">
-                  {setupStep} / 2
+                  {setupStep} / 3
                 </p>
                 <h2
                   className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#0b202a] sm:text-3xl"
                   id="setup-title"
                 >
-                  {setupStep === 1 ? "내 자산 경로 만들기" : "이번 달 실행 여건"}
+                  {setupStep === 1
+                    ? "내 자산 경로 만들기"
+                    : setupStep === 2
+                      ? "자산 구조 자가 점검"
+                      : "이번 달 실행 여건"}
                 </h2>
                 <p
                   className="mt-2 max-w-lg text-sm leading-6 text-[#596862]"
@@ -981,7 +1153,9 @@ export function WealthCopyApp() {
                 >
                   {setupStep === 1
                     ? "정확한 금액은 레벨 계산 후 저장하지 않습니다."
-                    : "금액 대신 비율과 선택형 참고 구간으로 행동을 조정합니다."}
+                    : setupStep === 2
+                      ? "상세 금액 없이 가장 큰 자산 범주와 안전 여력을 추정합니다."
+                      : "비율과 변화 신호로 이번 달 행동의 우선순위를 조정합니다."}
                 </p>
               </div>
               <button
@@ -993,16 +1167,33 @@ export function WealthCopyApp() {
                 ×
               </button>
               </div>
-              <div aria-hidden="true" className="mt-5 grid grid-cols-2 gap-2">
-                <span className="h-1 rounded-full bg-[#0d705f]" />
-                <span className={`h-1 rounded-full ${setupStep === 2 ? "bg-[#0d705f]" : "bg-[#d9ddd8]"}`} />
+              <div
+                aria-label={`설정 3단계 중 ${setupStep}단계`}
+                className="mt-5 grid grid-cols-3 gap-2"
+                role="progressbar"
+                aria-valuemax={3}
+                aria-valuemin={1}
+                aria-valuenow={setupStep}
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-1 rounded-full bg-[#0d705f]"
+                />
+                <span
+                  aria-hidden="true"
+                  className={`h-1 rounded-full ${setupStep >= 2 ? "bg-[#0d705f]" : "bg-[#d9ddd8]"}`}
+                />
+                <span
+                  aria-hidden="true"
+                  className={`h-1 rounded-full ${setupStep === 3 ? "bg-[#0d705f]" : "bg-[#d9ddd8]"}`}
+                />
               </div>
             </div>
 
             <form
               className="flex min-h-0 flex-1 flex-col"
               noValidate
-              onSubmit={setupStep === 1 ? handleSetupContinue : handleCreatePlan}
+              onSubmit={setupStep < 3 ? handleSetupContinue : handleCreatePlan}
             >
               <fieldset className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-7" disabled={isPreparing}>
                 <legend className="sr-only">
@@ -1116,6 +1307,108 @@ export function WealthCopyApp() {
                     <p className="mt-2 leading-5">입력 금액은 이번 요청의 단계 계산에만 사용하고 저장하지 않으며 OpenAI 모델에도 전달하지 않습니다. 계산된 레벨과 행동 완료 기록만 이 기기에 저장합니다.</p>
                   </details>
                 </section>
+                ) : setupStep === 2 ? (
+                <section>
+                  <p className="text-[11px] font-semibold tracking-[0.11em] text-[#0d705f]">
+                    자산 구조 · 자가 추정
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#10251f]">
+                    금액보다 구조를 먼저 확인해요
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-[#596862]">
+                    상품명이나 계좌정보 없이 현재 구조에 가장 가까운 구간만
+                    선택하세요. 모르는 항목은 그대로 두어도 됩니다.
+                  </p>
+
+                  <div className="mt-7 grid gap-6 sm:grid-cols-2">
+                    <label className="text-sm font-semibold text-[#273d35]">
+                      가장 큰 자산 범주
+                      <span className="ml-1 font-normal text-[#68756f]">
+                        (자가 추정)
+                      </span>
+                      <select
+                        className={`${inputClass} mt-2 pr-10`}
+                        onChange={(event) =>
+                          updateProfile({
+                            largestAssetGroup: event.target
+                              .value as LargestAssetGroup,
+                          })
+                        }
+                        ref={firstStructureInputRef}
+                        value={profile.largestAssetGroup}
+                      >
+                        <option value="unknown">잘 모르겠어요</option>
+                        <option value="cash">현금·예금</option>
+                        <option value="market">상장 금융자산</option>
+                        <option value="pension">연금</option>
+                        <option value="property">부동산</option>
+                        <option value="business_private">사업·비상장 자산</option>
+                        <option value="mixed">비슷하게 나뉜 혼합 구조</option>
+                      </select>
+                      <span className="mt-2 block text-xs font-normal leading-5 text-[#596862]">
+                        현재 가구 자산에서 비중이 가장 큰 범주예요.
+                      </span>
+                    </label>
+
+                    <label className="text-sm font-semibold text-[#273d35]">
+                      한 범주에 모인 비중
+                      <span className="ml-1 font-normal text-[#68756f]">
+                        (자가 추정)
+                      </span>
+                      <select
+                        className={`${inputClass} mt-2 pr-10`}
+                        onChange={(event) =>
+                          updateProfile({
+                            concentrationBand: event.target
+                              .value as ConcentrationBand,
+                          })
+                        }
+                        value={profile.concentrationBand}
+                      >
+                        <option value="unknown">잘 모르겠어요</option>
+                        <option value="under_30">30% 미만</option>
+                        <option value="p30_50">30–50%</option>
+                        <option value="p50_70">50–70%</option>
+                        <option value="p70_plus">70% 이상</option>
+                      </select>
+                      <span className="mt-2 block text-xs font-normal leading-5 text-[#596862]">
+                        가장 큰 자산 범주가 전체에서 차지하는 대략의 비중이에요.
+                      </span>
+                    </label>
+                  </div>
+
+                  <label className="mt-6 block text-sm font-semibold text-[#273d35]">
+                    바로 쓸 수 있는 생활비 여유
+                    <span className="ml-1 font-normal text-[#68756f]">
+                      (자가 추정)
+                    </span>
+                    <select
+                      className={`${inputClass} mt-2 pr-10`}
+                      onChange={(event) =>
+                        updateProfile({
+                          cashRunwayBand: event.target.value as CashRunwayBand,
+                        })
+                      }
+                      value={profile.cashRunwayBand}
+                    >
+                      <option value="unknown">잘 모르겠어요</option>
+                      <option value="under_1">1개월 미만</option>
+                      <option value="one_to_three">1–3개월</option>
+                      <option value="three_to_six">3–6개월</option>
+                      <option value="six_to_twelve">6–12개월</option>
+                      <option value="twelve_plus">12개월 이상</option>
+                    </select>
+                    <span className="mt-2 block text-xs font-normal leading-5 text-[#596862]">
+                      새 대출이나 자산 매각 없이 감당할 수 있는 필수 생활비
+                      기간을 골라 주세요.
+                    </span>
+                  </label>
+
+                  <div className="mt-7 rounded-xl border border-[#c8d8d1] bg-[#edf5f1] px-4 py-4 text-xs leading-5 text-[#285648]">
+                    이 선택은 자산 상품을 추천하기 위한 것이 아니라, 이번 달에
+                    먼저 정리할 행동의 순서를 정하는 데만 사용합니다.
+                  </div>
+                </section>
                 ) : (
                 <section>
                   <p className="text-[11px] font-semibold tracking-[0.11em] text-[#0d705f]">
@@ -1191,8 +1484,78 @@ export function WealthCopyApp() {
                     </label>
                   </div>
 
+                  <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                    <label className="text-sm font-semibold text-[#273d35]">
+                      소득의 안정성
+                      <span className="ml-1 font-normal text-[#68756f]">
+                        (자가 추정)
+                      </span>
+                      <select
+                        className={`${inputClass} mt-2 pr-10`}
+                        onChange={(event) =>
+                          updateProfile({
+                            incomeStability: event.target
+                              .value as IncomeStability,
+                          })
+                        }
+                        value={profile.incomeStability}
+                      >
+                        <option value="unknown">잘 모르겠어요</option>
+                        <option value="stable">매달 대체로 일정해요</option>
+                        <option value="variable">월별 변동이 커요</option>
+                        <option value="changing">곧 조건이 달라져요</option>
+                      </select>
+                    </label>
+
+                    <label className="text-sm font-semibold text-[#273d35]">
+                      부채 점검 신호
+                      <span className="ml-1 font-normal text-[#68756f]">
+                        (자가 추정)
+                      </span>
+                      <select
+                        className={`${inputClass} mt-2 pr-10`}
+                        onChange={(event) =>
+                          updateProfile({
+                            debtRisk: event.target.value as DebtRisk,
+                          })
+                        }
+                        value={profile.debtRisk}
+                      >
+                        <option value="unknown">잘 모르겠어요</option>
+                        <option value="none">현재 특이사항 없음</option>
+                        <option value="variable_rate">변동금리 부담이 있어요</option>
+                        <option value="high_cost">비용이 높은 부채가 있어요</option>
+                        <option value="near_maturity">곧 만기·조건 변경이 있어요</option>
+                      </select>
+                    </label>
+                  </div>
+
                   <label className="mt-6 block text-sm font-semibold text-[#273d35]">
-                    비슷한 가구 중 내 자산 위치
+                    앞으로 90일의 큰 변화
+                    <span className="ml-1 font-normal text-[#68756f]">
+                      (선택)
+                    </span>
+                    <select
+                      className={`${inputClass} mt-2 pr-10`}
+                      onChange={(event) =>
+                        updateProfile({
+                          next90DayEvent: event.target.value as Next90DayEvent,
+                        })
+                      }
+                      value={profile.next90DayEvent}
+                    >
+                      <option value="unknown">아직 모르겠어요</option>
+                      <option value="none">예정된 큰 변화 없음</option>
+                      <option value="income_change">소득·직업 변화</option>
+                      <option value="large_expense">큰 지출 예정</option>
+                      <option value="debt_maturity">부채 만기·조건 변경</option>
+                      <option value="tax">세금 신고·납부 일정</option>
+                      <option value="business_capital">사업 자금 일정</option>
+                    </select>
+                  </label>
+
+                  <label className="mt-6 block text-sm font-semibold text-[#273d35]">
+                    미국 PSID 가구 자산 참조 구간
                     <span className="ml-1 font-normal text-[#68756f]">(선택)</span>
                     <select
                       aria-describedby="asset-percentile-help"
@@ -1211,7 +1574,10 @@ export function WealthCopyApp() {
                       <option value="p75_89">참조 분포 · 75–89백분위</option>
                       <option value="p90_plus">참조 분포 · 90백분위 이상</option>
                     </select>
-                    <span className="mt-2 block text-xs font-normal leading-5 text-[#596862]" id="asset-percentile-help">잘 모르면 건너뛰세요. 경로를 정하는 참고 신호일 뿐이에요.</span>
+                    <span className="mt-2 block text-xs font-normal leading-5 text-[#596862]" id="asset-percentile-help">
+                      잘 모르면 건너뛰세요. 미국 가구 분포를 이해하기 위한 보조
+                      참고이며 국내 레벨이나 행동 강도를 정하지 않아요.
+                    </span>
                   </label>
 
                   <details
@@ -1266,7 +1632,9 @@ export function WealthCopyApp() {
               <div className="shrink-0 border-t border-[#d9ddd8] bg-[#fffefa] px-5 py-4 sm:flex sm:items-center sm:justify-between sm:px-8">
                 <button
                   className="min-h-12 w-full rounded-xl px-5 text-sm font-semibold text-[#53645d] transition-colors hover:bg-[#edf2ee] sm:w-auto"
-                  onClick={setupStep === 1 ? closeSetup : returnToAssetSnapshot}
+                  onClick={
+                    setupStep === 1 ? closeSetup : returnToPreviousSetupStep
+                  }
                   type="button"
                 >
                   {setupStep === 1 ? "취소" : "이전"}
@@ -1277,8 +1645,10 @@ export function WealthCopyApp() {
                   type="submit"
                 >
                   {setupStep === 1
-                    ? "계속"
-                    : isPreparing
+                    ? "자산 구조로 계속"
+                    : setupStep === 2
+                      ? "실행 여건으로 계속"
+                      : isPreparing
                       ? "경로 준비 중…"
                       : plan
                         ? "최신 경로 다시 만들기"
