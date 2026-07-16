@@ -6,7 +6,7 @@ Treat asset management as an action problem. Classify the household's current We
 
 ## Non-negotiable public surface
 
-- Before setup, show a neutral `NEXT` state. After classification, show only the computed next level (`L2` through `L15`), exactly three checkable actions, and progress.
+- Before setup, show the product promise and one setup CTA without fabricated level, action or progress values. After classification, show only the computed next level (`L2` through `L15`), exactly three checkable actions, and progress.
 - `L1 → L2` through `L14 → L15` and `L15 → L15` maintenance must all have reviewed action paths.
 - Progress means completed actions only: 0 actions = `0`, 1 = `33`, 2 = `67`, 3 = `100`.
 - Never describe progress as asset growth, return, level attainment, automatic promotion, time saved, or distance remaining.
@@ -48,7 +48,7 @@ Treat asset management as an action problem. Classify the household's current We
 
 ## Setup and request boundary
 
-- The structured profile accepts `totalAssetsKrw`, `totalDebtKrw`, `incomeExecutionRatio`, optional `assetPercentileBand`, and `debtServiceRatio`.
+- The structured profile accepts `totalAssetsKrw`, `totalDebtKrw`, `incomeExecutionRatio`, `debtServiceRatio`, coarse asset-structure, cash-runway, income-stability, debt-risk and near-term-event signals, plus an optional audit-only `assetPercentileBand`.
 - Do not accept a client-supplied current level. Derive it from the two aggregate amounts.
 - Debt service is part of the combined execution ratio, so preserve `debtServiceRatio <= incomeExecutionRatio` in client and server validation.
 - The optional note may contain an allowlisted situation but must reject common currency forms and likely contact or account data.
@@ -70,7 +70,7 @@ The successful `POST /api/v2/plan` response body has exactly these top-level fie
 - `NextAssetLevel` is `L2` through `L15`; a classified `L15` maps to `L15` maintenance.
 - Return the server-derived source level only in the `X-WealthCopy-Source-Level` response header so the client can verify that `nextLevel` is sequential. Keep it out of the JSON body and apply `Cache-Control: no-store` to the whole response.
 - Each action object has exactly `id` and `completed`.
-- Require three unique allowlisted action IDs and keep `schedule_monthly_checkin` third.
+- Require three unique allowlisted action IDs ordered `protect → advance → verify`; the server chooses the evidence action and keeps it third.
 - Derive progress deterministically from completed count. The model never controls it.
 - Keep localized titles and completion criteria in reviewed client-owned static copy.
 - Never add current level, amounts, PSID values, paths, assessment, model, source, explanation, duration, score, or recommendation fields to a successful JSON body. The source level header is the sole exception and remains no-store.
@@ -81,19 +81,19 @@ The successful `POST /api/v2/plan` response body has exactly these top-level fie
 - Classification, transition anchors, safety constraints and deterministic fallback are server responsibilities.
 - `src/lib/wealth/public-plan.ts` owns the public schema, action allowlist, static copy and safe projection.
 - `src/app/api/v2/plan/route.ts` is the public boundary and must return no-store responses.
-- Keep OpenAI calls server-side through the Responses API and `OPENAI_MODEL`, defaulting to `gpt-5.6`.
-- Preserve Zod Structured Outputs, semantic validation, `store: false`, token limits and hashed `safety_identifier`.
-- Preserve one reviewed transition-anchor action for the classified source level. GPT‑5.6 may choose only from that transition's routine allowlist; an applicable safety constraint takes precedence. The third action is always `schedule_monthly_checkin`.
-- Model input may contain allowed action IDs, normalized income-execution and debt bands, the optional currency-neutral PSID signal, and allowlisted situation signals. It must not contain amounts, net worth, current or next level, the raw note, products, transactions, returns or progress.
+- Keep OpenAI calls server-side through the Responses API and `OPENAI_MODEL`, defaulting to `gpt-5.6-luna` with low reasoning effort for this constrained selector.
+- Preserve Zod Structured Outputs, semantic validation, `store: false`, short timeouts, no SDK retries, token limits and hashed `safety_identifier`.
+- Preserve one reviewed transition-anchor action for the classified source level. The model may choose only one support action from that transition's routine allowlist; an applicable safety constraint takes precedence. The server fixes the advance and evidence actions.
+- Model input may contain allowed support-action IDs and coarse, non-PSID situation signals. It must not contain amounts, net worth, current or next level, the raw note, PSID values, recent-completion history, products, transactions, returns or progress.
 - Missing keys, API errors, invalid model output and rate limits use the same deterministic public shape. Do not expose model or fallback provenance.
 - Keep the 8KB body limit and demo limits of 20 requests per IP per minute and 8 per session per minute. Production requires authenticated distributed limiting.
 
 ## PSID data boundary
 
-- Use only the published historical 2019 weighted PSID aggregate recorded in `src/lib/wealth/server/psid-reference.ts`.
+- Use only the published historical 2019 weighted PSID aggregate recorded as `psid-wealth-reference-v2` in `src/lib/wealth/server/psid-reference.ts`.
 - The optional bands are `below_25`, `p25_49`, `p50_74`, `p75_89`, `p90_plus`, and `unknown`.
 - The user may self-select a band or leave it unknown. Do not compare their amounts with PSID, calculate a statistical percentile, or use the band to classify L1–L15.
-- Keep `psid-wealth-reference-v1`, `krw-net-worth-v1` and `behavior-policy-v1` separate.
+- Keep `psid-wealth-reference-v2`, `krw-net-worth-v1` and `behavior-policy-v2` separate.
 - Do not use a higher PSID band to increase speed, risk, confidence or expected success.
 - Never describe a band as a Korean population percentile, official grade, verified outcome or forecast.
 - Do not convert PSID dollar thresholds to Korean won. Keep audit values server-only and out of model input, public responses, storage and client bundles.
@@ -101,14 +101,15 @@ The successful `POST /api/v2/plan` response body has exactly these top-level fie
 
 ## Persistence and monthly continuity
 
-- Store only the strict `wealthcopy-public-plan-v4` record: `{version, monthKey, sourceLevel, plan}`. Its v4 semantics are fixed to `krw-net-worth-v1`; there is no separate policy field. Do not store exact amounts, ratios, PSID selection, raw note, internal candidates or model output.
-- Keep the anonymous session UUID in the separate `wealthcopy-anonymous-session` localStorage key. It is not part of the v4 plan record and must not contain financial data.
-- Delete `wealthcopy-public-plan-v3`, `wealthcopy-public-plan-v2` and `wealthcopy-demo-plan-v1`; their meanings are incompatible with automatic net-worth classification.
+- Store only the strict `wealthcopy-public-plan-v5` record: `{version, monthKey, sourceLevel, plan}`. Its v5 semantics are fixed to `krw-net-worth-v1`; there is no separate policy field. Do not store exact amounts, ratios, PSID selection, raw note, internal candidates or model output.
+- Keep the anonymous session UUID in the separate `wealthcopy-anonymous-session` localStorage key. It is not part of the v5 plan record and must not contain financial data.
+- Keep repetition prevention in a separate strict `wealthcopy-action-history-v1` record containing only the policy version and at most 36 `{actionId, sourceLevel, completedMonth}` entries. Never store amounts, ratios, PSID, notes, path scores or model data there.
+- Send only prior-month `{id, sourceLevel, monthsAgo}` completion signals to the planner. Exclude the current month, ignore records for a different server-classified source level, and never include this history in model input, public responses or logs.
+- Delete `wealthcopy-public-plan-v4`, `wealthcopy-public-plan-v3`, `wealthcopy-public-plan-v2` and `wealthcopy-demo-plan-v1`; their meanings are incompatible with current classification and action semantics.
 - Do not migrate a historical level or completed plan into a new financial band.
 - On every month rollover, require a fresh household snapshot before presenting a current next level. Do not carry a stale classification merely because the old plan was incomplete.
 - On same-month regeneration, carry completion only when the classified source level and target are unchanged and the action ID exists in both plans.
-- The client-generated `.ics` file must contain no amount, level, PSID band, profile, action completion or model data.
-- Clearing this month's record must remove the current and deprecated plan keys. Document that the anonymous session identifier is separate if it remains.
+- Clearing this month's record must remove the current and deprecated plan keys plus current-month completion-history entries. Older repetition history and the anonymous session identifier remain separate unless the user explicitly clears all local data.
 
 ## Upper-level action safety
 

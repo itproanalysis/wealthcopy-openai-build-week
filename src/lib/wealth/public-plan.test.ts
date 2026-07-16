@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PUBLIC_ACTION_COPY,
   carryCompletedActions,
   projectPublicPlan,
   publicPlanSchema,
@@ -165,5 +166,24 @@ describe("public plan contract", () => {
 
     expect(next.progress).toBe(0);
     expect(next.actions.every((action) => !action.completed)).toBe(true);
+  });
+
+  it("defines four distinct, concrete advance actions for repeated level operation", () => {
+    const operatingActionIds = [
+      "operate_cashflow_foundation",
+      "operate_asset_structure",
+      "operate_wealth_policy",
+      "operate_governance_cycle",
+    ] as const satisfies readonly PublicActionId[];
+
+    expect(new Set(operatingActionIds).size).toBe(4);
+    for (const actionId of operatingActionIds) {
+      const copy = PUBLIC_ACTION_COPY[actionId];
+      expect(copy.stage).toBe("advance");
+      expect(copy.title).toContain("이번 달");
+      expect(copy.description).toContain("완료");
+      expect(copy.steps).toHaveLength(3);
+    }
+    expect(PUBLIC_ACTION_COPY.review_recent_changes.stage).toBe("protect");
   });
 });

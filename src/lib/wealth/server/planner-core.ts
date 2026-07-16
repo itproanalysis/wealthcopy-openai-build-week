@@ -24,6 +24,10 @@ import {
   type PublicActionId,
   type PublicPlan,
 } from "../public-plan";
+import {
+  recentCompletionsForPlannerSchema,
+  type RecentCompletionForPlanner,
+} from "../recent-action-history";
 import { classifyAssetLevel } from "./asset-level-policy";
 import {
   derivePrivatePlanningSignals,
@@ -62,6 +66,7 @@ export const planRequestSchema = z
       .refine((value) => !likelyMonetaryAmountPattern.test(value), {
         message: "금액 대신 비율이나 상황만 적어 주세요.",
       }),
+    recentCompletions: recentCompletionsForPlannerSchema.default([]),
     sessionId: z.string().uuid(),
   })
   .strict();
@@ -136,6 +141,24 @@ export type PlanningContext = {
   nextLevel: NextAssetLevel;
   transitionActionIds: readonly PublicActionId[];
 };
+
+export const OPERATE_ACTION_BY_LEVEL = {
+  L1: "operate_cashflow_foundation",
+  L2: "operate_cashflow_foundation",
+  L3: "operate_cashflow_foundation",
+  L4: "operate_cashflow_foundation",
+  L5: "operate_asset_structure",
+  L6: "operate_asset_structure",
+  L7: "operate_asset_structure",
+  L8: "operate_asset_structure",
+  L9: "operate_wealth_policy",
+  L10: "operate_wealth_policy",
+  L11: "operate_wealth_policy",
+  L12: "operate_wealth_policy",
+  L13: "operate_governance_cycle",
+  L14: "operate_governance_cycle",
+  L15: "operate_governance_cycle",
+} as const satisfies Record<AssetLevel, PublicActionId>;
 
 function pushUnique(target: PublicActionId[], actionId: PublicActionId) {
   if (!target.includes(actionId)) target.push(actionId);
@@ -316,6 +339,7 @@ function eligibleSupportActionIds(
   forcedActionId: PublicActionId | null,
   privateSignals: ReturnType<typeof derivePrivatePlanningSignals>,
   sourceLevel: AssetLevel,
+  recentActionAges: ReadonlyMap<PublicActionId, number>,
 ) {
   if (forcedActionId) return [forcedActionId] as const;
 
@@ -353,7 +377,40 @@ function eligibleSupportActionIds(
     }
   }
 
-  return candidates;
+  const unfinishedCandidates = candidates.filter(
+    (actionId) => !recentActionAges.has(actionId),
+  );
+
+  return unfinishedCandidates.length > 0
+    ? unfinishedCandidates
+    : (["review_recent_changes"] as const);
+}
+
+function recentActionAgesForLevel(
+  completions: readonly RecentCompletionForPlanner[],
+  sourceLevel: AssetLevel,
+) {
+  return new Map<PublicActionId, number>(
+    completions
+      .filter((completion) => completion.sourceLevel === sourceLevel)
+      .map((completion) => [completion.id, completion.monthsAgo]),
+  );
+}
+
+function rankEvidenceActions(
+  actionIds: readonly PublicActionId[],
+  recentActionAges: ReadonlyMap<PublicActionId, number>,
+) {
+  return [...actionIds].sort((left, right) => {
+    const leftAge = recentActionAges.get(left);
+    const rightAge = recentActionAges.get(right);
+
+    if (leftAge === undefined && rightAge !== undefined) return -1;
+    if (leftAge !== undefined && rightAge === undefined) return 1;
+    if (leftAge === undefined || rightAge === undefined) return 0;
+
+    return rightAge - leftAge;
+  });
 }
 
 function collectConstraintSignals(request: PlanRequest) {
@@ -420,6 +477,10 @@ export function createPlanningContext(request: PlanRequest): PlanningContext {
   if (!leadPath) throw new Error("No internal path is available.");
 
   const transition = levelTransitionFor(sourceLevel);
+  const recentActionAges = recentActionAgesForLevel(
+    parsed.recentCompletions,
+    sourceLevel,
+  );
   const status = planningStatus(parsed.constraintNote);
   const forcedActionId = hardStopActionId(parsed, status, privateSignals);
   const supportActionIds = eligibleSupportActionIds(
@@ -429,9 +490,17 @@ export function createPlanningContext(request: PlanRequest): PlanningContext {
     forcedActionId,
     privateSignals,
     sourceLevel,
+    recentActionAges,
   );
-  const anchorActionId = transition.actionPriority[0];
-  const evidenceActionId = transition.evidenceActionIds[0];
+  const originalAnchorActionId = transition.actionPriority[0];
+  const anchorActionId = recentActionAges.has(originalAnchorActionId)
+    ? OPERATE_ACTION_BY_LEVEL[sourceLevel]
+    : originalAnchorActionId;
+  const rankedEvidenceActionIds = rankEvidenceActions(
+    transition.evidenceActionIds,
+    recentActionAges,
+  );
+  const evidenceActionId = rankedEvidenceActionIds[0];
   const fallbackSupportActionId = supportActionIds[0];
   if (!fallbackSupportActionId) {
     throw new Error("No support action is available for this transition.");
@@ -443,7 +512,7 @@ export function createPlanningContext(request: PlanRequest): PlanningContext {
     ...new Set([
       ...supportActionIds,
       anchorActionId,
-      ...transition.evidenceActionIds,
+      ...rankedEvidenceActionIds,
     ]),
   ];
   const allowModel =
@@ -485,7 +554,7 @@ export function createPlanningContext(request: PlanRequest): PlanningContext {
     allowModel,
     allowedActionIds,
     constraintActionIds,
-    evidenceActionIds: transition.evidenceActionIds,
+    evidenceActionIds: rankedEvidenceActionIds,
     fallback,
     mandatoryActionIds: [
       ...constraintActionIds,
@@ -498,7 +567,7 @@ export function createPlanningContext(request: PlanRequest): PlanningContext {
     sourceLevel,
     status,
     supportActionIds,
-    transitionActionIds: transition.actionPriority,
+    transitionActionIds: [anchorActionId],
   };
 }
 

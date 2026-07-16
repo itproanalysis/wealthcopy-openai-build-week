@@ -108,6 +108,10 @@ select {
     animation: none;
   }
 
+  .animate-pulse {
+    animation: none;
+  }
+
   .wc-progress::-webkit-progress-value {
     transition: none;
   }

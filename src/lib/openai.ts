@@ -2,7 +2,7 @@ import "server-only";
 
 import OpenAI from "openai";
 
-const DEFAULT_OPENAI_MODEL = "gpt-5.6";
+const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
 
 let client: OpenAI | undefined;
 
@@ -22,8 +22,8 @@ export function getOpenAIClient() {
 
   client ??= new OpenAI({
     apiKey,
-    maxRetries: 1,
-    timeout: 90_000,
+    maxRetries: 0,
+    timeout: 10_000,
   });
   return client;
 }

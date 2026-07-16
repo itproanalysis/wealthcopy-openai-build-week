@@ -6,6 +6,7 @@ import { PUBLIC_ACTION_COPY } from "../public-plan";
 import {
   createPlanningContext,
   mergeModelSelection,
+  OPERATE_ACTION_BY_LEVEL,
   planRequestSchema,
   type PlanRequest,
 } from "./planner-core";
@@ -25,6 +26,7 @@ const request: PlanRequest = {
     next90DayEvent: "none" as const,
   },
   constraintNote: "",
+  recentCompletions: [],
   sessionId: "123e4567-e89b-42d3-a456-426614174000",
 };
 
@@ -161,6 +163,56 @@ describe("private planning boundary", () => {
         withProfile({ incomeExecutionRatio: 20, debtServiceRatio: 21 }),
       ).success,
     ).toBe(false);
+  });
+
+  it("accepts only strict, bounded, unique recent-completion signals", () => {
+    const valid = {
+      id: "set_concentration_cap",
+      sourceLevel: "L7",
+      monthsAgo: 1,
+    } as const;
+    const validMaximum = Array.from({ length: 36 }, (_, index) => ({
+      id: [
+        "set_concentration_cap",
+        "compare_plan_to_actual",
+        "verify_concentration_rule",
+      ][Math.floor(index / 15)],
+      sourceLevel: `L${(index % 15) + 1}`,
+      monthsAgo: (index % 11) + 1,
+    }));
+    const attempts = [
+      [{ ...valid, id: "invented" }],
+      [{ ...valid, sourceLevel: "L16" }],
+      [{ ...valid, monthsAgo: 0 }],
+      [{ ...valid, totalAssetsKrw: 825_000_000 }],
+      [{ ...valid, incomeExecutionRatio: 35 }],
+      [{ ...valid, assetPercentileBand: "p90_plus" }],
+      [{ ...valid, constraintNote: "숨긴 메모" }],
+      [valid, { ...valid, monthsAgo: 2 }],
+      [...validMaximum, {
+        id: "verify_asset_mix_total",
+        sourceLevel: "L15",
+        monthsAgo: 1,
+      }],
+    ];
+
+    expect(
+      planRequestSchema.safeParse({
+        ...request,
+        recentCompletions: [valid],
+      }).success,
+    ).toBe(true);
+    expect(
+      planRequestSchema.safeParse({
+        ...request,
+        recentCompletions: validMaximum,
+      }).success,
+    ).toBe(true);
+    for (const recentCompletions of attempts) {
+      expect(
+        planRequestSchema.safeParse({ ...request, recentCompletions }).success,
+      ).toBe(false);
+    }
   });
 });
 
@@ -331,6 +383,143 @@ describe("protect, advance, and verify action policy", () => {
     expect(actionIds(context)[1]).toBe("audit_governance_calendar");
     expect(actionIds(context)[2]).toBe("close_governance_review");
   });
+
+  it("moves every level from its completed setup anchor to one of four explicit operating actions", () => {
+    expect(OPERATE_ACTION_BY_LEVEL).toEqual({
+      L1: "operate_cashflow_foundation",
+      L2: "operate_cashflow_foundation",
+      L3: "operate_cashflow_foundation",
+      L4: "operate_cashflow_foundation",
+      L5: "operate_asset_structure",
+      L6: "operate_asset_structure",
+      L7: "operate_asset_structure",
+      L8: "operate_asset_structure",
+      L9: "operate_wealth_policy",
+      L10: "operate_wealth_policy",
+      L11: "operate_wealth_policy",
+      L12: "operate_wealth_policy",
+      L13: "operate_governance_cycle",
+      L14: "operate_governance_cycle",
+      L15: "operate_governance_cycle",
+    });
+
+    for (const [expectedLevel, totalAssetsKrw, totalDebtKrw] of levelInputs) {
+      const originalAnchor = levelTransitionFor(expectedLevel).actionPriority[0];
+      const context = createPlanningContext({
+        ...withProfile({ totalAssetsKrw, totalDebtKrw }),
+        recentCompletions: [
+          {
+            id: originalAnchor,
+            sourceLevel: expectedLevel,
+            monthsAgo: 1,
+          },
+        ],
+      });
+      const ids = actionIds(context);
+
+      expect(context.sourceLevel).toBe(expectedLevel);
+      expect(ids[1]).toBe(OPERATE_ACTION_BY_LEVEL[expectedLevel]);
+      expect(PUBLIC_ACTION_COPY[ids[1]].stage).toBe("advance");
+      expect(ids[1]).not.toBe(originalAnchor);
+      expect(new Set(ids).size).toBe(3);
+    }
+  });
+
+  it("ignores completion history from a different server-classified level", () => {
+    const context = createPlanningContext({
+      ...withProfile({
+        totalAssetsKrw: 825_000_000,
+        totalDebtKrw: 220_000_000,
+      }),
+      recentCompletions: [
+        {
+          id: "set_concentration_cap",
+          sourceLevel: "L6",
+          monthsAgo: 1,
+        },
+      ],
+    });
+
+    expect(context.sourceLevel).toBe("L7");
+    expect(actionIds(context)[1]).toBe("set_concentration_cap");
+  });
+
+  it("replaces exhausted support setup work with a concrete recent-change review", () => {
+    const context = createPlanningContext({
+      ...withProfile({
+        totalAssetsKrw: 825_000_000,
+        totalDebtKrw: 220_000_000,
+      }),
+      recentCompletions: [
+        {
+          id: "set_new_money_guardrail",
+          sourceLevel: "L7",
+          monthsAgo: 1,
+        },
+      ],
+    });
+
+    expect(context.sourceLevel).toBe("L7");
+    expect(context.modelAllowedActionIds).toEqual(["review_recent_changes"]);
+    expect(context.allowModel).toBe(false);
+    expect(actionIds(context)[0]).toBe("review_recent_changes");
+  });
+
+  it("never lets recent history suppress a current hard stop", () => {
+    const context = createPlanningContext({
+      ...withProfile({
+        totalAssetsKrw: 825_000_000,
+        totalDebtKrw: 220_000_000,
+        cashRunwayBand: "under_1",
+      }),
+      recentCompletions: [
+        {
+          id: "build_cash_runway_rule",
+          sourceLevel: "L7",
+          monthsAgo: 1,
+        },
+      ],
+    });
+
+    expect(context.sourceLevel).toBe("L7");
+    expect(actionIds(context)[0]).toBe("build_cash_runway_rule");
+    expect(context.allowModel).toBe(false);
+  });
+
+  it("rotates evidence to never-completed first, then the oldest completion", () => {
+    const base = withProfile({
+      totalAssetsKrw: 825_000_000,
+      totalDebtKrw: 220_000_000,
+    });
+    const neverCompleted = createPlanningContext({
+      ...base,
+      recentCompletions: [
+        {
+          id: "compare_plan_to_actual",
+          sourceLevel: "L7",
+          monthsAgo: 1,
+        },
+      ],
+    });
+    const oldest = createPlanningContext({
+      ...base,
+      recentCompletions: [
+        {
+          id: "compare_plan_to_actual",
+          sourceLevel: "L7",
+          monthsAgo: 8,
+        },
+        {
+          id: "verify_concentration_rule",
+          sourceLevel: "L7",
+          monthsAgo: 2,
+        },
+      ],
+    });
+
+    expect(actionIds(neverCompleted)[2]).toBe("verify_concentration_rule");
+    expect(actionIds(oldest)[2]).toBe("compare_plan_to_actual");
+  });
 });
 
 describe("bounded model contribution", () => {
@@ -407,5 +596,41 @@ describe("bounded model contribution", () => {
         candidate.doneWhen.includes("완료"),
       ),
     ).toBe(true);
+  });
+
+  it("keeps raw completion history out of model input and preserves rotated mandatory slots", () => {
+    const context = createPlanningContext({
+      ...withProfile({
+        totalAssetsKrw: 825_000_000,
+        totalDebtKrw: 220_000_000,
+        largestAssetGroup: "market",
+        concentrationBand: "p50_70",
+      }),
+      recentCompletions: [
+        {
+          id: "set_concentration_cap",
+          sourceLevel: "L7",
+          monthsAgo: 1,
+        },
+        {
+          id: "compare_plan_to_actual",
+          sourceLevel: "L7",
+          monthsAgo: 2,
+        },
+      ],
+    });
+    const serializedModelInput = JSON.stringify(context.modelInput);
+    const plan = mergeModelSelection(context, {
+      supportActionId: "set_new_money_guardrail",
+    });
+
+    expect(serializedModelInput).not.toMatch(
+      /recentCompletions|monthsAgo|sourceLevel|set_concentration_cap|compare_plan_to_actual/,
+    );
+    expect(plan.actions.map((action) => action.id)).toEqual([
+      "set_new_money_guardrail",
+      "operate_asset_structure",
+      "verify_concentration_rule",
+    ]);
   });
 });

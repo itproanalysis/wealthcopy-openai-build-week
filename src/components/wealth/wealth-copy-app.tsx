@@ -20,6 +20,15 @@ import {
   serializeStoredPlan,
 } from "@/lib/wealth/public-plan-storage";
 import {
+  recentCompletionsForPlanner,
+  pruneRecentActionHistory,
+  removeMonthFromActionHistory,
+  restoreRecentActionHistory,
+  serializeRecentActionHistory,
+  updateRecentActionHistory,
+  type RecentActionCompletion,
+} from "@/lib/wealth/recent-action-history";
+import {
   ASSET_LEVEL_LABELS,
   WEALTH_SOURCE_LEVEL_HEADER,
   assetLevelSchema,
@@ -81,6 +90,8 @@ const DEPRECATED_PLAN_STORAGE_KEYS = [
   "wealthcopy-demo-plan-v1",
 ] as const;
 const SESSION_STORAGE_KEY = "wealthcopy-anonymous-session";
+const ACTION_HISTORY_STORAGE_KEY = "wealthcopy-action-history-v1";
+const PLAN_REQUEST_TIMEOUT_MS = 20_000;
 
 const INITIAL_PROFILE: SetupProfile = {
   totalAssetsEok: "",
@@ -115,6 +126,52 @@ function eokToKrw(value: number) {
   return Math.round(value * KRW_PER_EOK);
 }
 
+function formatEokReadback(value: number | "") {
+  if (value === "" || !Number.isFinite(value) || value < 0) return null;
+
+  const totalKrw = eokToKrw(value);
+  if (!Number.isSafeInteger(totalKrw)) return null;
+  if (totalKrw === 0) return "0원";
+
+  const eok = Math.floor(totalKrw / KRW_PER_EOK);
+  const remainder = totalKrw % KRW_PER_EOK;
+  const manwon = Math.floor(remainder / 10_000);
+  const won = remainder % 10_000;
+  const parts = [
+    eok > 0 ? `${eok.toLocaleString("ko-KR")}억` : "",
+    manwon > 0 ? `${manwon.toLocaleString("ko-KR")}만원` : "",
+    won > 0 ? `${won.toLocaleString("ko-KR")}원` : "",
+  ].filter(Boolean);
+
+  return `${parts.join(" ")} · ${totalKrw.toLocaleString("ko-KR")}원`;
+}
+
+function readLocalStorage(key: string) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalStorage(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function removeLocalStorage(key: string) {
+  try {
+    window.localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function monthKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -131,7 +188,7 @@ function recalculatePlan(plan: PublicPlan): PublicPlan {
 }
 
 function getSessionId() {
-  const existing = window.localStorage.getItem(SESSION_STORAGE_KEY);
+  const existing = readLocalStorage(SESSION_STORAGE_KEY);
   if (
     existing &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -142,7 +199,7 @@ function getSessionId() {
   }
 
   const created = window.crypto.randomUUID();
-  window.localStorage.setItem(SESSION_STORAGE_KEY, created);
+  writeLocalStorage(SESSION_STORAGE_KEY, created);
   return created;
 }
 
@@ -157,6 +214,11 @@ export function WealthCopyApp() {
   const [setupError, setSetupError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [clearConfirmationArmed, setClearConfirmationArmed] = useState(false);
+  const [replaceConfirmationArmed, setReplaceConfirmationArmed] =
+    useState(false);
+  const [recentActionHistory, setRecentActionHistory] = useState<
+    RecentActionCompletion[]
+  >([]);
   const [copyFeedback, setCopyFeedback] = useState<{
     actionId: PublicActionId;
     copied: boolean;
@@ -171,8 +233,13 @@ export function WealthCopyApp() {
   const totalAssetsInputRef = useRef<HTMLInputElement>(null);
   const totalDebtInputRef = useRef<HTMLInputElement>(null);
   const firstStructureInputRef = useRef<HTMLSelectElement>(null);
+  const concentrationInputRef = useRef<HTMLSelectElement>(null);
+  const cashRunwayInputRef = useRef<HTMLSelectElement>(null);
   const executionRatioInputRef = useRef<HTMLInputElement>(null);
   const debtRatioInputRef = useRef<HTMLInputElement>(null);
+  const incomeStabilityInputRef = useRef<HTMLSelectElement>(null);
+  const debtRiskInputRef = useRef<HTMLSelectElement>(null);
+  const next90DayEventInputRef = useRef<HTMLSelectElement>(null);
   const firstActionInputRef = useRef<HTMLInputElement>(null);
   const focusNewPlanRef = useRef(false);
   const requestAbortRef = useRef<AbortController>(null);
@@ -186,25 +253,38 @@ export function WealthCopyApp() {
     plan?.actions.find((action) => !action.completed)?.id ?? null;
   const isMaintenanceLevel =
     journeySourceLevel === "L15" && plan?.nextLevel === "L15";
+  const totalAssetsReadback = profile
+    ? formatEokReadback(profile.totalAssetsEok)
+    : null;
+  const totalDebtReadback = profile
+    ? formatEokReadback(profile.totalDebtEok)
+    : null;
 
   useEffect(() => {
     const restoreTimer = window.setTimeout(() => {
       try {
         const hadDeprecatedPlan = DEPRECATED_PLAN_STORAGE_KEYS.some(
-          (key) => window.localStorage.getItem(key) !== null,
+          (key) => readLocalStorage(key) !== null,
         );
         DEPRECATED_PLAN_STORAGE_KEYS.forEach((key) =>
-          window.localStorage.removeItem(key),
+          removeLocalStorage(key),
         );
+        const restoredHistory = pruneRecentActionHistory(
+          restoreRecentActionHistory(
+            readLocalStorage(ACTION_HISTORY_STORAGE_KEY),
+          ),
+          currentMonth,
+        );
+        setRecentActionHistory(restoredHistory);
 
         const restoredPlan = restoreStoredPlan(
-          window.localStorage.getItem(PLAN_STORAGE_KEY),
+          readLocalStorage(PLAN_STORAGE_KEY),
           currentMonth,
         );
 
         if (restoredPlan) {
           if (restoredPlan.rolledOver) {
-            window.localStorage.removeItem(PLAN_STORAGE_KEY);
+            removeLocalStorage(PLAN_STORAGE_KEY);
             setPlan(null);
             setJourneySourceLevel(null);
             setStatusMessage(
@@ -213,13 +293,25 @@ export function WealthCopyApp() {
             return;
           }
 
+          const historyWithCurrentCompletions = restoredPlan.plan.actions.reduce(
+            (history, action) =>
+              updateRecentActionHistory(
+                history,
+                action.id,
+                restoredPlan.sourceLevel,
+                currentMonth,
+                action.completed,
+              ),
+            restoredHistory,
+          );
+          setRecentActionHistory(historyWithCurrentCompletions);
           setPlan(restoredPlan.plan);
           setJourneySourceLevel(restoredPlan.sourceLevel);
           setStatusMessage("이번 달 행동 기록을 불러왔어요.");
           return;
         }
 
-        window.localStorage.removeItem(PLAN_STORAGE_KEY);
+        removeLocalStorage(PLAN_STORAGE_KEY);
         if (hadDeprecatedPlan) {
           setStatusMessage(
             "레벨 기준이 새로워졌어요. 최신 가구 자산정보로 행동을 다시 준비해 주세요.",
@@ -239,7 +331,7 @@ export function WealthCopyApp() {
       if (monthKey(now) === monthKey(calendarNow)) return;
 
       setIsRestoring(true);
-      window.localStorage.removeItem(PLAN_STORAGE_KEY);
+      removeLocalStorage(PLAN_STORAGE_KEY);
       setPlan(null);
       setJourneySourceLevel(null);
       setStatusMessage(
@@ -261,11 +353,57 @@ export function WealthCopyApp() {
   useEffect(() => {
     if (!plan || !journeySourceLevel) return;
 
-    window.localStorage.setItem(
-      PLAN_STORAGE_KEY,
-      serializeStoredPlan(currentMonth, journeySourceLevel, plan),
-    );
+    let saved = false;
+    try {
+      saved = writeLocalStorage(
+        PLAN_STORAGE_KEY,
+        serializeStoredPlan(currentMonth, journeySourceLevel, plan),
+      );
+    } catch {
+      saved = false;
+    }
+    if (saved) return;
+
+    const warningTimer = window.setTimeout(() => {
+      setStatusMessage(
+        "이번 달 계획은 화면에서 사용할 수 있지만 브라우저에 저장하지 못했어요. 창을 닫기 전에 체크리스트를 복사해 주세요.",
+      );
+    }, 0);
+    return () => window.clearTimeout(warningTimer);
   }, [currentMonth, journeySourceLevel, plan]);
+
+  useEffect(() => {
+    if (isRestoring) return;
+
+    let saved = false;
+    try {
+      saved = writeLocalStorage(
+        ACTION_HISTORY_STORAGE_KEY,
+        serializeRecentActionHistory(recentActionHistory),
+      );
+    } catch {
+      saved = false;
+    }
+    if (saved) return;
+
+    const warningTimer = window.setTimeout(() => {
+      setStatusMessage(
+        "행동 완료 이력을 브라우저에 저장하지 못했어요. 다음 달에는 같은 행동이 다시 보일 수 있습니다.",
+      );
+    }, 0);
+    return () => window.clearTimeout(warningTimer);
+  }, [isRestoring, recentActionHistory]);
+
+  useEffect(() => {
+    if (!clearConfirmationArmed) return;
+
+    const confirmationTimer = window.setTimeout(() => {
+      setClearConfirmationArmed(false);
+      setStatusMessage("기록 지우기 확인 시간이 지나 취소했어요.");
+    }, 10_000);
+
+    return () => window.clearTimeout(confirmationTimer);
+  }, [clearConfirmationArmed]);
 
   useEffect(
     () => () => {
@@ -306,6 +444,7 @@ export function WealthCopyApp() {
         setConstraintNote(null);
         setSetupError(null);
         setSetupStep(1);
+        setReplaceConfirmationArmed(false);
         return;
       }
 
@@ -345,6 +484,8 @@ export function WealthCopyApp() {
   function openSetup() {
     setSetupError(null);
     setSetupStep(1);
+    setClearConfirmationArmed(false);
+    setReplaceConfirmationArmed(false);
     setProfile({
       ...INITIAL_PROFILE,
       ...lastActionSignalsRef.current,
@@ -356,6 +497,7 @@ export function WealthCopyApp() {
   function updateProfile(patch: Partial<SetupProfile>) {
     setProfile((current) => (current ? { ...current, ...patch } : current));
     setSetupError(null);
+    setReplaceConfirmationArmed(false);
   }
 
   function closeSetup() {
@@ -367,6 +509,7 @@ export function WealthCopyApp() {
     setConstraintNote(null);
     setSetupError(null);
     setSetupStep(1);
+    setReplaceConfirmationArmed(false);
   }
 
   function validateAssetSnapshot() {
@@ -394,6 +537,50 @@ export function WealthCopyApp() {
     return true;
   }
 
+  function validateStructureSignals() {
+    if (!profile) return false;
+
+    if (profile.largestAssetGroup === "unknown") {
+      setSetupError("가장 큰 자산 범주를 선택해 주세요.");
+      firstStructureInputRef.current?.focus();
+      return false;
+    }
+    if (profile.concentrationBand === "unknown") {
+      setSetupError("한 범주에 모인 비중을 선택해 주세요.");
+      concentrationInputRef.current?.focus();
+      return false;
+    }
+    if (profile.cashRunwayBand === "unknown") {
+      setSetupError("바로 쓸 수 있는 생활비 여유를 선택해 주세요.");
+      cashRunwayInputRef.current?.focus();
+      return false;
+    }
+
+    return true;
+  }
+
+  function validateExecutionSignals() {
+    if (!profile) return false;
+
+    if (profile.incomeStability === "unknown") {
+      setSetupError("소득의 안정성을 선택해 주세요.");
+      incomeStabilityInputRef.current?.focus();
+      return false;
+    }
+    if (profile.debtRisk === "unknown") {
+      setSetupError("부채 점검 신호를 선택해 주세요.");
+      debtRiskInputRef.current?.focus();
+      return false;
+    }
+    if (profile.next90DayEvent === "unknown") {
+      setSetupError("앞으로 90일의 큰 변화를 선택해 주세요.");
+      next90DayEventInputRef.current?.focus();
+      return false;
+    }
+
+    return true;
+  }
+
   function handleSetupContinue(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (setupStep === 1) {
@@ -405,6 +592,7 @@ export function WealthCopyApp() {
       return;
     }
 
+    if (!validateStructureSignals()) return;
     setSetupError(null);
     setSetupStep(3);
     window.setTimeout(() => executionRatioInputRef.current?.focus(), 0);
@@ -412,6 +600,7 @@ export function WealthCopyApp() {
 
   function returnToPreviousSetupStep() {
     setSetupError(null);
+    setReplaceConfirmationArmed(false);
     if (setupStep === 3) {
       setSetupStep(2);
       window.setTimeout(() => firstStructureInputRef.current?.focus(), 0);
@@ -469,6 +658,7 @@ export function WealthCopyApp() {
       debtRatioInputRef.current?.focus();
       return;
     }
+    if (!validateExecutionSignals()) return;
 
     const totalAssetsKrw = eokToKrw(totalAssetsEok);
     const totalDebtKrw = eokToKrw(totalDebtEok);
@@ -480,19 +670,19 @@ export function WealthCopyApp() {
       totalAssetsInputRef.current?.focus();
       return;
     }
-    if (
-      plan &&
-      completedCount > 0 &&
-      plan.progress < 100 &&
-      !window.confirm(
-        "최신 자산 스냅샷으로 레벨과 행동을 다시 계산합니다. 분류된 현재 레벨과 다음 레벨이 같을 때만 같은 행동의 완료 기록을 유지합니다. 계속할까요?",
-      )
-    ) {
+    if (plan && completedCount > 0 && !replaceConfirmationArmed) {
+      setReplaceConfirmationArmed(true);
+      setSetupError(null);
       return;
     }
 
     requestAbortRef.current?.abort();
     const abortController = new AbortController();
+    let requestTimedOut = false;
+    const requestTimeout = window.setTimeout(() => {
+      requestTimedOut = true;
+      abortController.abort();
+    }, PLAN_REQUEST_TIMEOUT_MS);
     requestAbortRef.current = abortController;
     setIsPreparing(true);
     setSetupError(null);
@@ -514,6 +704,10 @@ export function WealthCopyApp() {
             next90DayEvent,
           },
           constraintNote,
+          recentCompletions: recentCompletionsForPlanner(
+            recentActionHistory,
+            currentMonth,
+          ),
           sessionId: getSessionId(),
         }),
         headers: { "Content-Type": "application/json" },
@@ -587,12 +781,19 @@ export function WealthCopyApp() {
       setConstraintNote(null);
       setSetupOpen(false);
       setSetupStep(1);
+      setReplaceConfirmationArmed(false);
       setStatusMessage(
         nextPlan.progress > 0
           ? `${nextPlan.nextLevel} 행동 세 개를 준비했고, 같은 행동의 완료 기록은 유지했어요.`
           : `${nextPlan.nextLevel}의 이번 달 행동 세 개가 준비됐어요.`,
       );
     } catch (error) {
+      if (requestTimedOut) {
+        setSetupError(
+          "경로 준비가 20초를 넘겼어요. 연결을 확인한 뒤 다시 시도해 주세요.",
+        );
+        return;
+      }
       if (abortController.signal.aborted) return;
       setSetupError(
         error instanceof UserFacingPlanError
@@ -600,7 +801,8 @@ export function WealthCopyApp() {
           : "이번 달 행동을 만들지 못했어요. 다시 시도해 주세요.",
       );
     } finally {
-      if (!abortController.signal.aborted) {
+      window.clearTimeout(requestTimeout);
+      if (requestAbortRef.current === abortController) {
         setIsPreparing(false);
         requestAbortRef.current = null;
       }
@@ -623,17 +825,31 @@ export function WealthCopyApp() {
       },
     );
 
+    setClearConfirmationArmed(false);
     setPlan(nextPlan);
     const updatedAction = nextPlan.actions.find(
       (action) => action.id === actionId,
     );
+    if (journeySourceLevel && updatedAction) {
+      setRecentActionHistory((history) =>
+        updateRecentActionHistory(
+          history,
+          actionId,
+          journeySourceLevel,
+          currentMonth,
+          updatedAction.completed,
+        ),
+      );
+    }
     const nextCompletedCount = nextPlan.actions.filter(
       (action) => action.completed,
     ).length;
     setStatusMessage(
       nextCompletedCount === 3
-        ? `${actionCopy.title} 완료. 이번 달 행동 세 개를 모두 마쳤어요. 행동 완료만으로 레벨이 오르지는 않아요. 최신 가구 자산정보로 다시 분류해 주세요.`
-        : `${actionCopy.title} ${updatedAction?.completed ? "완료" : "완료 취소"}. 세 개 중 ${nextCompletedCount}개 완료했어요.`,
+        ? `${actionCopy.title} 완료. 이번 달 행동 세 개를 모두 마쳤어요. 남는 결과는 다음 달 운영에 다시 쓸 수 있게 보관해 주세요. 행동 완료만으로 레벨이 오르지는 않아요. 최신 가구 자산정보로 다시 분류해 주세요.`
+        : updatedAction?.completed
+          ? `${actionCopy.title} 완료. 남는 결과는 다음 달에 다시 쓸 수 있게 보관해 주세요. 세 개 중 ${nextCompletedCount}개 완료했어요.`
+          : `${actionCopy.title} 완료 취소. 세 개 중 ${nextCompletedCount}개 완료했어요.`,
     );
   }
 
@@ -678,16 +894,47 @@ export function WealthCopyApp() {
       return;
     }
 
-    window.localStorage.removeItem(PLAN_STORAGE_KEY);
-    DEPRECATED_PLAN_STORAGE_KEYS.forEach((key) =>
-      window.localStorage.removeItem(key),
+    const planRemoved = removeLocalStorage(PLAN_STORAGE_KEY);
+    const deprecatedPlansRemoved = DEPRECATED_PLAN_STORAGE_KEYS.map((key) =>
+      removeLocalStorage(key),
+    ).every(Boolean);
+    const historyWithoutCurrentMonth = removeMonthFromActionHistory(
+      recentActionHistory,
+      currentMonth,
+    );
+    let historySaved = false;
+    try {
+      historySaved = writeLocalStorage(
+        ACTION_HISTORY_STORAGE_KEY,
+        serializeRecentActionHistory(historyWithoutCurrentMonth),
+      );
+    } catch {
+      historySaved = false;
+    }
+    const historyRemovedAsFallback = historySaved
+      ? false
+      : removeLocalStorage(ACTION_HISTORY_STORAGE_KEY);
+    setRecentActionHistory(
+      historySaved
+        ? historyWithoutCurrentMonth
+        : historyRemovedAsFallback
+          ? []
+          : historyWithoutCurrentMonth,
     );
     lastActionSignalsRef.current = null;
     setCopyFeedback(null);
     setClearConfirmationArmed(false);
     setPlan(null);
     setJourneySourceLevel(null);
-    setStatusMessage("이번 달 행동 기록을 지웠어요.");
+    setStatusMessage(
+      planRemoved &&
+        deprecatedPlansRemoved &&
+        (historySaved || historyRemovedAsFallback)
+        ? historySaved
+          ? "이번 달 행동 기록을 지웠어요. 이전 달의 최소 완료 이력은 유지했어요."
+          : "이번 달 행동 기록을 지웠어요. 저장 공간 문제로 이전 달의 최소 완료 이력도 함께 지웠어요."
+        : "화면의 이번 달 기록은 지웠지만 브라우저 저장소 삭제를 확인하지 못했어요. 공용 기기라면 브라우저 사이트 데이터도 삭제해 주세요.",
+    );
   }
 
   return (
@@ -735,7 +982,7 @@ export function WealthCopyApp() {
               <section
                 aria-busy="true"
                 aria-label="이번 달 경로 불러오는 중"
-                className="wc-rise grid min-h-[34rem] animate-pulse gap-5 lg:grid-cols-[1.15fr_0.85fr]"
+                className="wc-rise grid min-h-[34rem] animate-pulse gap-5 motion-reduce:animate-none lg:grid-cols-[1.15fr_0.85fr]"
               >
                 <div className="rounded-3xl border border-[#d9ddd8] bg-[#fffefa] p-7 sm:p-12">
                   <div className="h-3 w-28 rounded bg-[#dfe3de]" />
@@ -931,8 +1178,10 @@ export function WealthCopyApp() {
                         }`}
                         key={actionId}
                       >
-                        <label className="grid min-h-16 cursor-pointer grid-cols-[2.25rem_1fr_2.75rem] items-start gap-3 sm:grid-cols-[3rem_1fr_8rem] sm:items-center sm:gap-5">
+                        <label className="grid min-h-16 cursor-pointer grid-cols-[2.25rem_1fr_3.25rem] items-start gap-3 sm:grid-cols-[3rem_1fr_8rem] sm:items-center sm:gap-5">
                           <input
+                            aria-describedby={`${actionId}-completion-criterion`}
+                            aria-label={`${actionCopy.title}: 완료 기준 ${completed ? "충족됨, 완료 취소" : "충족으로 표시"}`}
                             checked={completed}
                             className="peer sr-only"
                             onChange={() => toggleAction(actionId)}
@@ -941,7 +1190,7 @@ export function WealthCopyApp() {
                           />
                           <span
                             aria-hidden="true"
-                            className="font-mono pt-1 text-xs font-medium tracking-[0.08em] text-[#68756f] sm:pt-0"
+                            className="font-mono pt-1 text-xs font-medium tracking-[0.08em] text-[#596862] sm:pt-0"
                           >
                             0{index + 1}
                           </span>
@@ -968,7 +1217,7 @@ export function WealthCopyApp() {
                             >
                               ✓
                             </span>
-                            <span className="hidden text-xs font-semibold text-[#53645d] sm:block">
+                            <span className="text-right text-[11px] font-semibold leading-4 text-[#53645d] sm:text-xs">
                               {completed
                                 ? "완료됨"
                                 : actionId === activeActionId
@@ -979,7 +1228,7 @@ export function WealthCopyApp() {
                         </label>
                         <div className="ml-[3rem] mt-4 grid gap-3 sm:ml-[4.25rem] sm:grid-cols-2">
                           <div className="rounded-xl border border-[#d9ddd8] bg-white/75 px-4 py-3">
-                            <p className="text-[10px] font-semibold tracking-[0.1em] text-[#68756f]">
+                            <p className="text-[10px] font-semibold tracking-[0.1em] text-[#596862]">
                               남는 결과
                             </p>
                             <p className="mt-1.5 text-sm font-semibold leading-6 text-[#29483e]">
@@ -987,10 +1236,13 @@ export function WealthCopyApp() {
                             </p>
                           </div>
                           <div className="rounded-xl border border-[#d9ddd8] bg-white/75 px-4 py-3">
-                            <p className="text-[10px] font-semibold tracking-[0.1em] text-[#68756f]">
+                            <p className="text-[10px] font-semibold tracking-[0.1em] text-[#596862]">
                               완료 기준
                             </p>
-                            <p className="mt-1.5 text-sm leading-6 text-[#40534b]">
+                            <p
+                              className="mt-1.5 text-sm leading-6 text-[#40534b]"
+                              id={`${actionId}-completion-criterion`}
+                            >
                               {actionCopy.description}
                             </p>
                           </div>
@@ -998,10 +1250,10 @@ export function WealthCopyApp() {
                         <details className="group ml-[3rem] mt-3 rounded-xl border border-[#d9ddd8] bg-[#fafbf8] px-4 py-3 sm:ml-[4.25rem]">
                           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-[#29483e] marker:hidden">
                             <span>실행 순서</span>
-                            <span className="text-xs font-medium text-[#68756f] group-open:hidden">
+                            <span className="text-xs font-medium text-[#596862] group-open:hidden">
                               3단계 펼치기
                             </span>
-                            <span className="hidden text-xs font-medium text-[#68756f] group-open:inline">
+                            <span className="hidden text-xs font-medium text-[#596862] group-open:inline">
                               접기
                             </span>
                           </summary>
@@ -1034,13 +1286,11 @@ export function WealthCopyApp() {
                             </button>
                             {copyFeedback?.actionId === actionId ? (
                               <p
-                                aria-live="polite"
                                 className={`mt-1 text-xs leading-5 ${
                                   copyFeedback.copied
                                     ? "text-[#3d5c51]"
                                     : "text-[#8b4037]"
                                 }`}
-                                role="status"
                               >
                                 {copyFeedback.message}
                               </p>
@@ -1255,6 +1505,11 @@ export function WealthCopyApp() {
                       >
                         예금·투자자산·부동산 등 가구가 보유한 자산의 현재 추정
                         합계예요. 3.5는 3억 5천만원입니다.
+                        {totalAssetsReadback ? (
+                          <strong className="mt-1 block font-semibold text-[#29483e]">
+                            입력값: 약 {totalAssetsReadback}
+                          </strong>
+                        ) : null}
                       </span>
                     </label>
 
@@ -1291,6 +1546,11 @@ export function WealthCopyApp() {
                       >
                         주택담보·신용·기타 대출 등 가구가 갚아야 할 부채의 현재
                         추정 합계예요.
+                        {totalDebtReadback ? (
+                          <strong className="mt-1 block font-semibold text-[#29483e]">
+                            입력값: 약 {totalDebtReadback}
+                          </strong>
+                        ) : null}
                       </span>
                     </label>
                   </div>
@@ -1304,7 +1564,14 @@ export function WealthCopyApp() {
                   </div>
                   <details className="mt-3 px-1 text-xs text-[#596862]">
                     <summary className="cursor-pointer font-semibold text-[#40534b]">입력정보 처리 안내</summary>
-                    <p className="mt-2 leading-5">입력 금액은 이번 요청의 단계 계산에만 사용하고 저장하지 않으며 OpenAI 모델에도 전달하지 않습니다. 계산된 레벨과 행동 완료 기록만 이 기기에 저장합니다.</p>
+                    <p className="mt-2 leading-5">
+                      정확한 금액·PSID 선택값·최근 완료 이력은 OpenAI 모델에
+                      전달하지 않습니다. 서버가 정한 안전한 보조 행동 후보가 2개
+                      이상일 때만 선택한 범주 신호 일부를 OpenAI 모델에 전달합니다.
+                      최근 완료 행동의 ID·레벨·경과 월은 서버의 반복 방지에만
+                      사용하고, ID·레벨·완료 월은 최대 12개월 동안 이 기기에만
+                      저장합니다.
+                    </p>
                   </details>
                 </section>
                 ) : setupStep === 2 ? (
@@ -1316,17 +1583,19 @@ export function WealthCopyApp() {
                     금액보다 구조를 먼저 확인해요
                   </h3>
                   <p className="mt-2 text-sm leading-6 text-[#596862]">
-                    상품명이나 계좌정보 없이 현재 구조에 가장 가까운 구간만
-                    선택하세요. 모르는 항목은 그대로 두어도 됩니다.
+                    상품명이나 계좌정보 없이 현재 구조에 가장 가까운 추정 구간을
+                    선택하세요.
                   </p>
 
                   <div className="mt-7 grid gap-6 sm:grid-cols-2">
                     <label className="text-sm font-semibold text-[#273d35]">
                       가장 큰 자산 범주
-                      <span className="ml-1 font-normal text-[#68756f]">
-                        (자가 추정)
+                      <span className="ml-1 font-normal text-[#596862]">
+                        (필수 자가 추정)
                       </span>
                       <select
+                        aria-describedby={`largest-asset-group-help${setupError?.includes("가장 큰 자산 범주") ? " setup-error" : ""}`}
+                        aria-invalid={setupError?.includes("가장 큰 자산 범주") || undefined}
                         className={`${inputClass} mt-2 pr-10`}
                         onChange={(event) =>
                           updateProfile({
@@ -1335,9 +1604,10 @@ export function WealthCopyApp() {
                           })
                         }
                         ref={firstStructureInputRef}
+                        required
                         value={profile.largestAssetGroup}
                       >
-                        <option value="unknown">잘 모르겠어요</option>
+                        <option disabled value="unknown">선택해 주세요</option>
                         <option value="cash">현금·예금</option>
                         <option value="market">상장 금융자산</option>
                         <option value="pension">연금</option>
@@ -1345,17 +1615,22 @@ export function WealthCopyApp() {
                         <option value="business_private">사업·비상장 자산</option>
                         <option value="mixed">비슷하게 나뉜 혼합 구조</option>
                       </select>
-                      <span className="mt-2 block text-xs font-normal leading-5 text-[#596862]">
+                      <span
+                        className="mt-2 block text-xs font-normal leading-5 text-[#596862]"
+                        id="largest-asset-group-help"
+                      >
                         현재 가구 자산에서 비중이 가장 큰 범주예요.
                       </span>
                     </label>
 
                     <label className="text-sm font-semibold text-[#273d35]">
                       한 범주에 모인 비중
-                      <span className="ml-1 font-normal text-[#68756f]">
-                        (자가 추정)
+                      <span className="ml-1 font-normal text-[#596862]">
+                        (필수 자가 추정)
                       </span>
                       <select
+                        aria-describedby={`concentration-band-help${setupError?.includes("한 범주에 모인 비중") ? " setup-error" : ""}`}
+                        aria-invalid={setupError?.includes("한 범주에 모인 비중") || undefined}
                         className={`${inputClass} mt-2 pr-10`}
                         onChange={(event) =>
                           updateProfile({
@@ -1363,15 +1638,20 @@ export function WealthCopyApp() {
                               .value as ConcentrationBand,
                           })
                         }
+                        ref={concentrationInputRef}
+                        required
                         value={profile.concentrationBand}
                       >
-                        <option value="unknown">잘 모르겠어요</option>
+                        <option disabled value="unknown">선택해 주세요</option>
                         <option value="under_30">30% 미만</option>
                         <option value="p30_50">30–50%</option>
                         <option value="p50_70">50–70%</option>
                         <option value="p70_plus">70% 이상</option>
                       </select>
-                      <span className="mt-2 block text-xs font-normal leading-5 text-[#596862]">
+                      <span
+                        className="mt-2 block text-xs font-normal leading-5 text-[#596862]"
+                        id="concentration-band-help"
+                      >
                         가장 큰 자산 범주가 전체에서 차지하는 대략의 비중이에요.
                       </span>
                     </label>
@@ -1379,26 +1659,33 @@ export function WealthCopyApp() {
 
                   <label className="mt-6 block text-sm font-semibold text-[#273d35]">
                     바로 쓸 수 있는 생활비 여유
-                    <span className="ml-1 font-normal text-[#68756f]">
-                      (자가 추정)
+                    <span className="ml-1 font-normal text-[#596862]">
+                      (필수 자가 추정)
                     </span>
                     <select
+                      aria-describedby={`cash-runway-help${setupError?.includes("바로 쓸 수 있는 생활비 여유") ? " setup-error" : ""}`}
+                      aria-invalid={setupError?.includes("바로 쓸 수 있는 생활비 여유") || undefined}
                       className={`${inputClass} mt-2 pr-10`}
                       onChange={(event) =>
                         updateProfile({
                           cashRunwayBand: event.target.value as CashRunwayBand,
                         })
                       }
+                      ref={cashRunwayInputRef}
+                      required
                       value={profile.cashRunwayBand}
                     >
-                      <option value="unknown">잘 모르겠어요</option>
+                      <option disabled value="unknown">선택해 주세요</option>
                       <option value="under_1">1개월 미만</option>
                       <option value="one_to_three">1–3개월</option>
                       <option value="three_to_six">3–6개월</option>
                       <option value="six_to_twelve">6–12개월</option>
                       <option value="twelve_plus">12개월 이상</option>
                     </select>
-                    <span className="mt-2 block text-xs font-normal leading-5 text-[#596862]">
+                    <span
+                      className="mt-2 block text-xs font-normal leading-5 text-[#596862]"
+                      id="cash-runway-help"
+                    >
                       새 대출이나 자산 매각 없이 감당할 수 있는 필수 생활비
                       기간을 골라 주세요.
                     </span>
@@ -1487,10 +1774,12 @@ export function WealthCopyApp() {
                   <div className="mt-6 grid gap-6 sm:grid-cols-2">
                     <label className="text-sm font-semibold text-[#273d35]">
                       소득의 안정성
-                      <span className="ml-1 font-normal text-[#68756f]">
-                        (자가 추정)
+                      <span className="ml-1 font-normal text-[#596862]">
+                        (필수 자가 추정)
                       </span>
                       <select
+                        aria-describedby={setupError?.includes("소득의 안정성") ? "setup-error" : undefined}
+                        aria-invalid={setupError?.includes("소득의 안정성") || undefined}
                         className={`${inputClass} mt-2 pr-10`}
                         onChange={(event) =>
                           updateProfile({
@@ -1498,9 +1787,11 @@ export function WealthCopyApp() {
                               .value as IncomeStability,
                           })
                         }
+                        ref={incomeStabilityInputRef}
+                        required
                         value={profile.incomeStability}
                       >
-                        <option value="unknown">잘 모르겠어요</option>
+                        <option disabled value="unknown">선택해 주세요</option>
                         <option value="stable">매달 대체로 일정해요</option>
                         <option value="variable">월별 변동이 커요</option>
                         <option value="changing">곧 조건이 달라져요</option>
@@ -1509,19 +1800,23 @@ export function WealthCopyApp() {
 
                     <label className="text-sm font-semibold text-[#273d35]">
                       부채 점검 신호
-                      <span className="ml-1 font-normal text-[#68756f]">
-                        (자가 추정)
+                      <span className="ml-1 font-normal text-[#596862]">
+                        (필수 자가 확인)
                       </span>
                       <select
+                        aria-describedby={setupError?.includes("부채 점검 신호") ? "setup-error" : undefined}
+                        aria-invalid={setupError?.includes("부채 점검 신호") || undefined}
                         className={`${inputClass} mt-2 pr-10`}
                         onChange={(event) =>
                           updateProfile({
                             debtRisk: event.target.value as DebtRisk,
                           })
                         }
+                        ref={debtRiskInputRef}
+                        required
                         value={profile.debtRisk}
                       >
-                        <option value="unknown">잘 모르겠어요</option>
+                        <option disabled value="unknown">선택해 주세요</option>
                         <option value="none">현재 특이사항 없음</option>
                         <option value="variable_rate">변동금리 부담이 있어요</option>
                         <option value="high_cost">비용이 높은 부채가 있어요</option>
@@ -1532,19 +1827,23 @@ export function WealthCopyApp() {
 
                   <label className="mt-6 block text-sm font-semibold text-[#273d35]">
                     앞으로 90일의 큰 변화
-                    <span className="ml-1 font-normal text-[#68756f]">
-                      (선택)
+                    <span className="ml-1 font-normal text-[#596862]">
+                      (필수 확인)
                     </span>
                     <select
+                      aria-describedby={setupError?.includes("앞으로 90일의 큰 변화") ? "setup-error" : undefined}
+                      aria-invalid={setupError?.includes("앞으로 90일의 큰 변화") || undefined}
                       className={`${inputClass} mt-2 pr-10`}
                       onChange={(event) =>
                         updateProfile({
                           next90DayEvent: event.target.value as Next90DayEvent,
                         })
                       }
+                      ref={next90DayEventInputRef}
+                      required
                       value={profile.next90DayEvent}
                     >
-                      <option value="unknown">아직 모르겠어요</option>
+                      <option disabled value="unknown">선택해 주세요</option>
                       <option value="none">예정된 큰 변화 없음</option>
                       <option value="income_change">소득·직업 변화</option>
                       <option value="large_expense">큰 지출 예정</option>
@@ -1556,7 +1855,7 @@ export function WealthCopyApp() {
 
                   <label className="mt-6 block text-sm font-semibold text-[#273d35]">
                     미국 PSID 가구 자산 참조 구간
-                    <span className="ml-1 font-normal text-[#68756f]">(선택)</span>
+                    <span className="ml-1 font-normal text-[#596862]">(선택)</span>
                     <select
                       aria-describedby="asset-percentile-help"
                       className={`${inputClass} mt-2 pr-10`}
@@ -1576,7 +1875,8 @@ export function WealthCopyApp() {
                     </select>
                     <span className="mt-2 block text-xs font-normal leading-5 text-[#596862]" id="asset-percentile-help">
                       잘 모르면 건너뛰세요. 미국 가구 분포를 이해하기 위한 보조
-                      참고이며 국내 레벨이나 행동 강도를 정하지 않아요.
+                      참고이며 국내 레벨이나 행동 강도를 정하지 않고 OpenAI
+                      모델에도 전달하지 않아요.
                     </span>
                   </label>
 
@@ -1597,7 +1897,7 @@ export function WealthCopyApp() {
                   <details className="mt-3 rounded-xl border border-[#d9ddd8] px-4 py-3">
                     <summary className="cursor-pointer text-sm font-semibold text-[#40534b]">
                       이번 달 변화 추가
-                      <span className="ml-1 font-normal text-[#68756f]">
+                      <span className="ml-1 font-normal text-[#596862]">
                         (선택)
                       </span>
                     </summary>
@@ -1609,6 +1909,7 @@ export function WealthCopyApp() {
                         onChange={(event) => {
                           setConstraintNote(event.target.value);
                           setSetupError(null);
+                          setReplaceConfirmationArmed(false);
                         }}
                         placeholder="예: 내년에 이사 계획이 있어 현금 여유를 유지하고 싶어요."
                         value={constraintNote}
@@ -1629,6 +1930,19 @@ export function WealthCopyApp() {
                 </p>
               ) : null}
 
+              {replaceConfirmationArmed ? (
+                <p
+                  className="mx-5 mb-4 rounded-xl border border-[#d8c99f] bg-[#fff9e8] px-4 py-3 text-sm font-medium leading-6 text-[#684f16] sm:mx-8"
+                  id="replace-plan-confirmation"
+                  role="status"
+                >
+                  현재 {completedCount}/3 완료 기록이 있어요. 새 분류에서 레벨이나
+                  행동이 달라지면 현재 목록이 교체될 수 있습니다. 완료 이력은 같은
+                  행동의 반복을 줄이기 위해 이 기기에 남습니다. 아래 확인 버튼을 한
+                  번 더 누르면 계속합니다.
+                </p>
+              ) : null}
+
               <div className="shrink-0 border-t border-[#d9ddd8] bg-[#fffefa] px-5 py-4 sm:flex sm:items-center sm:justify-between sm:px-8">
                 <button
                   className="min-h-12 w-full rounded-xl px-5 text-sm font-semibold text-[#53645d] transition-colors hover:bg-[#edf2ee] sm:w-auto"
@@ -1640,6 +1954,11 @@ export function WealthCopyApp() {
                   {setupStep === 1 ? "취소" : "이전"}
                 </button>
                 <button
+                  aria-describedby={
+                    replaceConfirmationArmed
+                      ? "replace-plan-confirmation"
+                      : undefined
+                  }
                   className="mt-2 min-h-12 w-full rounded-xl bg-[#0d705f] px-6 text-sm font-semibold text-white transition-colors hover:bg-[#095b4e] disabled:cursor-wait disabled:opacity-60 sm:mt-0 sm:w-auto"
                   disabled={isPreparing}
                   type="submit"
@@ -1650,6 +1969,8 @@ export function WealthCopyApp() {
                       ? "실행 여건으로 계속"
                       : isPreparing
                       ? "경로 준비 중…"
+                      : replaceConfirmationArmed
+                        ? "확인하고 경로 다시 만들기"
                       : plan
                         ? "최신 경로 다시 만들기"
                         : "내 경로 만들기"}

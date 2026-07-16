@@ -24,6 +24,15 @@ import {
 
 export const runtime = "nodejs";
 
+const MAX_REQUEST_BODY_BYTES = 8_192;
+
+class RequestBodyTooLargeError extends Error {
+  constructor() {
+    super("Request body exceeds the configured byte limit.");
+    this.name = "RequestBodyTooLargeError";
+  }
+}
+
 type RateLimitEntry = { count: number; resetAt: number };
 type RateLimitGlobal = typeof globalThis & {
   wealthCopyV2RateLimits?: Map<string, RateLimitEntry>;
@@ -77,6 +86,93 @@ function anonymousSafetyIdentifier(sessionId: string) {
   return createHash("sha256").update(sessionId).digest("hex");
 }
 
+function isApplicationJson(request: Request) {
+  const mediaType = request.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  return mediaType === "application/json";
+}
+
+function hasSupportedContentEncoding(request: Request) {
+  const contentEncoding = request.headers.get("content-encoding")?.trim();
+  if (!contentEncoding) return true;
+
+  return contentEncoding
+    .split(",")
+    .every((encoding) => encoding.trim().toLowerCase() === "identity");
+}
+
+function hasForeignBrowserOrigin(request: Request) {
+  const fetchSite = request.headers.get("sec-fetch-site")?.toLowerCase();
+  if (fetchSite === "cross-site") {
+    return true;
+  }
+
+  // Browsers generate Sec-Fetch-Site and page scripts cannot override it.
+  // Cloud Run may expose a user-facing regional alias while Next.js receives
+  // the canonical service URL, so Origin and request.url can legitimately
+  // differ even though the browser request is same-origin.
+  if (fetchSite === "same-origin") return false;
+
+  const suppliedOrigin = request.headers.get("origin");
+  if (!suppliedOrigin) return false;
+
+  try {
+    return new URL(suppliedOrigin).origin !== new URL(request.url).origin;
+  } catch {
+    return true;
+  }
+}
+
+function declaredContentLength(request: Request) {
+  const value = request.headers.get("content-length");
+  if (value === null) return null;
+
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) return Number.NaN;
+  return Number(normalized);
+}
+
+async function readBoundedRequestBody(request: Request) {
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_REQUEST_BODY_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The size violation remains authoritative even if cancellation fails.
+        }
+        throw new RequestBodyTooLargeError();
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return new TextDecoder("utf-8", { fatal: true }).decode(body);
+}
+
 function jsonNoStore(value: unknown, init?: ResponseInit) {
   const headers = new Headers(init?.headers);
   headers.set("Cache-Control", "no-store");
@@ -102,18 +198,54 @@ function publicPlanResponse(
 }
 
 export async function POST(request: Request) {
+  if (!isApplicationJson(request)) {
+    return jsonNoStore(
+      { error: "Content-Type은 application/json이어야 합니다." },
+      { status: 415 },
+    );
+  }
+
+  if (!hasSupportedContentEncoding(request)) {
+    return jsonNoStore(
+      { error: "압축된 요청 본문은 지원하지 않습니다." },
+      { status: 415 },
+    );
+  }
+
+  if (hasForeignBrowserOrigin(request)) {
+    return jsonNoStore(
+      { error: "다른 사이트에서 보낸 요청은 허용하지 않습니다." },
+      { status: 403 },
+    );
+  }
+
+  const contentLength = declaredContentLength(request);
+  if (Number.isNaN(contentLength) || contentLength === Infinity) {
+    return jsonNoStore(
+      { error: "Content-Length가 올바르지 않습니다." },
+      { status: 400 },
+    );
+  }
+  if (contentLength !== null && contentLength > MAX_REQUEST_BODY_BYTES) {
+    return jsonNoStore(
+      { error: "요청 본문은 8KB를 넘을 수 없습니다." },
+      { status: 413 },
+    );
+  }
+
   let payload: unknown;
 
   try {
-    const rawBody = await request.text();
-    if (new TextEncoder().encode(rawBody).byteLength > 8_192) {
+    const rawBody = await readBoundedRequestBody(request);
+    payload = JSON.parse(rawBody);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
       return jsonNoStore(
         { error: "요청 본문은 8KB를 넘을 수 없습니다." },
         { status: 413 },
       );
     }
-    payload = JSON.parse(rawBody);
-  } catch {
+
     return jsonNoStore(
       { error: "유효한 JSON 요청을 보내 주세요." },
       { status: 400 },
@@ -159,9 +291,9 @@ export async function POST(request: Request) {
     const response = await getOpenAIClient().responses.parse({
       input: JSON.stringify(context.modelInput),
       instructions: WEALTH_ACTION_INSTRUCTIONS,
-      max_output_tokens: 300,
+      max_output_tokens: 120,
       model: getOpenAIModel(),
-      reasoning: { effort: "medium" },
+      reasoning: { effort: "low" },
       safety_identifier: safetyIdentifier,
       store: false,
       text: {

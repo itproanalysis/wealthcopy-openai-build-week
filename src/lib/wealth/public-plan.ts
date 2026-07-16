@@ -20,6 +20,7 @@ export const publicActionIdSchema = z.enum([
   "review_retirement_account_routine",
   "map_property_liquidity_dates",
   "map_critical_access_and_owners",
+  "review_recent_changes",
   "seek_professional_review",
   "map_30_day_cashflow",
   "separate_cash_roles",
@@ -36,6 +37,10 @@ export const publicActionIdSchema = z.enum([
   "create_family_decision_matrix",
   "build_liquidity_event_calendar",
   "audit_governance_calendar",
+  "operate_cashflow_foundation",
+  "operate_asset_structure",
+  "operate_wealth_policy",
+  "operate_governance_cycle",
   "verify_cashflow_balance",
   "verify_first_automatic_transfer",
   "verify_payment_coverage",
@@ -230,6 +235,18 @@ export const PUBLIC_ACTION_COPY = {
       "예비 책임자가 실제 접근 가능 여부를 확인하고 확인일을 남깁니다.",
     ],
   },
+  review_recent_changes: {
+    stage: "protect",
+    title: "지난 완료 이후 바뀐 조건 표시하기",
+    outcome: "소득·부채·현금 여유·자산 구조의 변화만 표시한 점검표",
+    description:
+      "최근 완료 이후 소득 안정성·부채 신호·현금 여유·90일 일정·가장 큰 자산 범주가 바뀌었는지 각각 표시하면 완료됩니다.",
+    steps: [
+      "새 조건 점검표에 소득·부채·현금 여유·90일 일정·가장 큰 자산 범주를 적습니다.",
+      "기억하거나 보관한 지난 상태와 현재 상태를 항목별로 대조합니다.",
+      "각 항목에 ‘변화 없음’ 또는 바뀐 조건과 확인일을 표시합니다.",
+    ],
+  },
   seek_professional_review: {
     stage: "protect",
     title: "전문가 확인 범위 정하기",
@@ -420,6 +437,54 @@ export const PUBLIC_ACTION_COPY = {
       "올해의 보고·승인·위험·승계 일정을 한곳에 모읍니다.",
       "각 일정의 책임자와 근거 문서를 대조합니다.",
       "누락을 보완하고 검토 완료 표시와 날짜를 남깁니다.",
+    ],
+  },
+  operate_cashflow_foundation: {
+    stage: "advance",
+    title: "이번 달 현금흐름 규칙 실행하기",
+    outcome: "우선 납부·저축·목표자금 규칙을 적용한 실행 기록",
+    description:
+      "현재 단계에서 만든 현금흐름 규칙 하나를 이번 달 실제 입출금에 적용하고 결과와 확인일을 기록하면 완료됩니다.",
+    steps: [
+      "보관한 우선 납부·저축·목표자금 규칙을 열고, 없으면 이번 달 적용할 규칙 한 문장을 적습니다.",
+      "이번 달 실제 입출금 한 건에 선택한 규칙을 적용합니다.",
+      "적용 결과와 다음 실행일을 현금흐름 기록에 남깁니다.",
+    ],
+  },
+  operate_asset_structure: {
+    stage: "advance",
+    title: "이번 달 자산구조 규칙 적용하기",
+    outcome: "집중도·유동성·평가기준 규칙을 적용한 자산 판단 기록",
+    description:
+      "신규자금·자산 확인·유동성 일정 중 이번 달 발생한 판단 한 건에 현재 자산구조 규칙을 적용하고 결과를 저장하면 완료됩니다.",
+    steps: [
+      "이번 달 확인할 신규자금·자산 기준일·유동성 일정 중 한 건을 고릅니다.",
+      "보관한 집중도·유동성·평가기준 규칙을 열고, 없으면 이번 판단에 쓸 기준 한 문장을 적습니다.",
+      "판단 결과와 다음 확인일을 자산 현황표에 남깁니다.",
+    ],
+  },
+  operate_wealth_policy: {
+    stage: "advance",
+    title: "이번 달 자산 원칙으로 판단하기",
+    outcome: "자산 원칙과 예외 절차를 적용해 닫은 의사결정 기록",
+    description:
+      "이번 달 자산 의사결정 한 건을 현재 원칙서·범주 한계·보고 절차와 대조해 승인·보류·재검토 중 하나로 기록하면 완료됩니다.",
+    steps: [
+      "이번 달 검토할 자산 의사결정 한 건을 고릅니다.",
+      "보관한 원칙서·자산 범주 한계·예외 절차를 열고, 없으면 적용할 원칙과 예외 기준을 한 문장씩 적습니다.",
+      "승인·보류·재검토 결과와 책임자·확인일을 남깁니다.",
+    ],
+  },
+  operate_governance_cycle: {
+    stage: "advance",
+    title: "이번 달 자산 운영 의제 닫기",
+    outcome: "책임자와 근거 문서가 연결된 운영 의제 완료 기록",
+    description:
+      "운영 달력에서 이번 달 의제 한 건을 선택해 책임자·근거 문서·결정 결과를 기록하고 완료 표시하면 완료됩니다.",
+    steps: [
+      "보관한 운영 달력에서 가장 가까운 의제 한 건을 고르고, 달력이 없으면 이번 달 의제 한 건을 새로 적습니다.",
+      "담당자와 근거 문서, 필요한 확인 항목을 대조합니다.",
+      "결정 결과와 후속 일정 또는 완료 표시를 운영 달력에 남깁니다.",
     ],
   },
   verify_cashflow_balance: {

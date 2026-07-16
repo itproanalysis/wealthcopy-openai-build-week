@@ -9,12 +9,13 @@
 | Region | `asia-northeast3` (Seoul) |
 | Cloud Run service | `wealth-copy` |
 | Initial revision | `wealth-copy-00001-lkh` |
-| Current verified revision | `wealth-copy-00003-9bq` (2026-07-16 action-policy v2 path release) |
+| Current verified revision | `wealth-copy-00005-crx` (2026-07-16 monthly operating-loop release) |
 | Runtime identity | `wealth-copy-run@abis-web-platform.iam.gserviceaccount.com` |
 | Secret | `wealth-copy-openai-api-key` |
-| Model environment | `OPENAI_MODEL=gpt-5.6` |
-| Resources | 1 CPU, 512 MiB, concurrency 20, timeout 120 seconds |
+| Model environment | `OPENAI_MODEL=gpt-5.6-luna` |
+| Resources | 1 CPU, 512 MiB, concurrency 20, timeout 30 seconds |
 | Scaling | minimum 0, maximum 3 instances |
+| Uptime check | `WealthCopy production health`, HTTPS `/api/healthz`, every 5 minutes |
 
 The service is public for the Build Week demo. Cloud Run terminates TLS and injects `PORT=8080`. The container listens on `0.0.0.0`, runs as a non-root user and receives the OpenAI key only when an instance starts.
 
@@ -50,12 +51,12 @@ gcloud.cmd run deploy wealth-copy `
   --ingress=all `
   --service-account=wealth-copy-run@abis-web-platform.iam.gserviceaccount.com `
   --set-secrets=OPENAI_API_KEY=wealth-copy-openai-api-key:1 `
-  --set-env-vars=OPENAI_MODEL=gpt-5.6 `
+  --set-env-vars=OPENAI_MODEL=gpt-5.6-luna `
   --port=8080 `
   --cpu=1 `
   --memory=512Mi `
   --concurrency=20 `
-  --timeout=120s `
+  --timeout=30s `
   --min-instances=0 `
   --max-instances=3 `
   --cpu-boost `
@@ -87,9 +88,10 @@ $url = gcloud.cmd run services describe wealth-copy `
   --format='value(status.url)'
 
 Invoke-WebRequest $url -UseBasicParsing
+Invoke-WebRequest "$url/api/healthz" -Method Head -UseBasicParsing
 ```
 
-For `POST /api/v2/plan`, verify HTTP 200, exactly `nextLevel`, `actions`, `progress`, three actions, `X-WealthCopy-Source-Level` and `Cache-Control: no-store`. Test `L14 → L15` separately from `L15 → L15` maintenance without using real customer data.
+For `POST /api/v2/plan`, verify HTTP 200, exactly `nextLevel`, `actions`, `progress`, three actions, `X-WealthCopy-Source-Level` and `Cache-Control: no-store`. Test `L14 → L15` separately from `L15 → L15` maintenance without using real customer data. Also verify that `text/plain`, foreign-origin, compressed and over-8KiB requests are rejected before model access. `/api/healthz` must return 200 with `Cache-Control: no-store` and no internal dependency details.
 
 Read recent service errors:
 
@@ -99,6 +101,15 @@ gcloud.cmd logging read `
   --project=abis-web-platform `
   --freshness=30m
 ```
+
+Confirm the external health check configuration:
+
+```powershell
+gcloud.cmd monitoring uptime list-configs `
+  --project=abis-web-platform
+```
+
+The verified check resource is `wealthcopy-production-health-iqC5B6EElH8`. Cloud Monitoring must remain enabled for the project.
 
 ## Roll back
 
@@ -119,7 +130,7 @@ gcloud.cmd run services update-traffic wealth-copy `
 ## Production follow-ups
 
 - Replace the in-memory IP/session limiter with an authenticated distributed limiter.
-- Add budget alerts, uptime monitoring and an application-level health endpoint before production traffic.
+- Add budget alerts and an alert notification channel before production traffic; the health endpoint and five-minute uptime check exist, but they do not yet page an operator.
 - Define retention, deletion and incident-response policies before storing any customer-derived cohort data.
 - Review accessibility, privacy and financial-domain obligations before expanding beyond the demo.
 
