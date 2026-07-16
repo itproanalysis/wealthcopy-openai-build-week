@@ -16,7 +16,6 @@ import {
   type PublicPlan,
 } from "@/lib/wealth/public-plan";
 import {
-  DEFAULT_PUBLIC_ACTION_IDS,
   restoreStoredPlan,
   serializeStoredPlan,
 } from "@/lib/wealth/public-plan-storage";
@@ -45,6 +44,8 @@ type ActionSignals = Pick<
   "incomeExecutionRatio" | "assetPercentileBand" | "debtServiceRatio"
 >;
 
+type SetupStep = 1 | 2;
+
 type ApiErrorBody = {
   error?: string;
 };
@@ -70,7 +71,7 @@ const INITIAL_PROFILE: SetupProfile = {
 const INITIAL_NOTE = "";
 
 const inputClass =
-  "mt-2 h-12 w-full rounded-2xl border border-[#d8e3ee] bg-white px-4 text-[15px] font-semibold text-[#10213f] outline-none transition placeholder:font-normal placeholder:text-[#9aa7b9] focus:border-[#06a4a8] focus:ring-4 focus:ring-[#06a4a8]/10";
+  "h-14 w-full rounded-xl border border-[#cbd2cd] bg-[#fffefa] px-4 pr-16 text-[15px] font-semibold text-[#10251f] outline-none transition-[border-color,box-shadow,background-color] duration-200 placeholder:font-normal placeholder:text-[#68746f] hover:border-[#9da9a3] focus:border-[#0d705f] focus:bg-white focus:ring-4 focus:ring-[#0d705f]/12";
 
 const KRW_PER_EOK = 100_000_000;
 const MAX_EOK_INPUT =
@@ -116,6 +117,7 @@ export function WealthCopyApp() {
   const [profile, setProfile] = useState<SetupProfile | null>(null);
   const [constraintNote, setConstraintNote] = useState<string | null>(null);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [setupStep, setSetupStep] = useState<SetupStep>(1);
   const [isPreparing, setIsPreparing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -139,12 +141,8 @@ export function WealthCopyApp() {
   const currentMonthLabel = monthLabel(calendarNow);
   const completedCount =
     plan?.actions.filter((action) => action.completed).length ?? 0;
-  const visibleActionIds = plan
-    ? plan.actions.map((action) => action.id)
-    : DEFAULT_PUBLIC_ACTION_IDS;
   const activeActionId =
     plan?.actions.find((action) => !action.completed)?.id ?? null;
-  const nextLevelLabel = plan?.nextLevel ?? "NEXT";
   const isMaintenanceLevel =
     journeySourceLevel === "L15" && plan?.nextLevel === "L15";
 
@@ -240,7 +238,7 @@ export function WealthCopyApp() {
 
     focusNewPlanRef.current = false;
     const focusTimer = window.setTimeout(
-      () => firstActionInputRef.current?.focus(),
+      () => firstActionInputRef.current?.focus({ preventScroll: true }),
       0,
     );
     return () => window.clearTimeout(focusTimer);
@@ -266,6 +264,7 @@ export function WealthCopyApp() {
         setProfile(null);
         setConstraintNote(null);
         setSetupError(null);
+        setSetupStep(1);
         return;
       }
 
@@ -304,6 +303,7 @@ export function WealthCopyApp() {
 
   function openSetup() {
     setSetupError(null);
+    setSetupStep(1);
     setProfile({
       ...INITIAL_PROFILE,
       ...lastActionSignalsRef.current,
@@ -325,6 +325,47 @@ export function WealthCopyApp() {
     setProfile(null);
     setConstraintNote(null);
     setSetupError(null);
+    setSetupStep(1);
+  }
+
+  function validateAssetSnapshot() {
+    if (!profile) return false;
+
+    if (
+      profile.totalAssetsEok === "" ||
+      !Number.isFinite(profile.totalAssetsEok) ||
+      profile.totalAssetsEok < 0
+    ) {
+      setSetupError("현재 보유한 총자산을 0 이상의 숫자로 입력해 주세요.");
+      totalAssetsInputRef.current?.focus();
+      return false;
+    }
+    if (
+      profile.totalDebtEok === "" ||
+      !Number.isFinite(profile.totalDebtEok) ||
+      profile.totalDebtEok < 0
+    ) {
+      setSetupError("현재 남은 총부채를 0 이상의 숫자로 입력해 주세요.");
+      totalDebtInputRef.current?.focus();
+      return false;
+    }
+
+    return true;
+  }
+
+  function handleSetupContinue(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!validateAssetSnapshot()) return;
+
+    setSetupError(null);
+    setSetupStep(2);
+    window.setTimeout(() => executionRatioInputRef.current?.focus(), 0);
+  }
+
+  function returnToAssetSnapshot() {
+    setSetupError(null);
+    setSetupStep(1);
+    window.setTimeout(() => totalAssetsInputRef.current?.focus(), 0);
   }
 
   async function handleCreatePlan(event: FormEvent<HTMLFormElement>) {
@@ -339,24 +380,8 @@ export function WealthCopyApp() {
       assetPercentileBand,
       debtServiceRatio,
     } = profile;
-    if (
-      totalAssetsEok === "" ||
-      !Number.isFinite(totalAssetsEok) ||
-      totalAssetsEok < 0
-    ) {
-      setSetupError("현재 보유한 총자산을 0 이상의 숫자로 입력해 주세요.");
-      totalAssetsInputRef.current?.focus();
-      return;
-    }
-    if (
-      totalDebtEok === "" ||
-      !Number.isFinite(totalDebtEok) ||
-      totalDebtEok < 0
-    ) {
-      setSetupError("현재 남은 총부채를 0 이상의 숫자로 입력해 주세요.");
-      totalDebtInputRef.current?.focus();
-      return;
-    }
+    if (!validateAssetSnapshot()) return;
+    if (totalAssetsEok === "" || totalDebtEok === "") return;
     if (
       incomeExecutionRatio === "" ||
       !Number.isFinite(incomeExecutionRatio) ||
@@ -398,6 +423,7 @@ export function WealthCopyApp() {
     if (
       plan &&
       completedCount > 0 &&
+      plan.progress < 100 &&
       !window.confirm(
         "최신 자산 스냅샷으로 레벨과 행동을 다시 계산합니다. 분류된 현재 레벨과 다음 레벨이 같을 때만 같은 행동의 완료 기록을 유지합니다. 계속할까요?",
       )
@@ -487,6 +513,7 @@ export function WealthCopyApp() {
       setProfile(null);
       setConstraintNote(null);
       setSetupOpen(false);
+      setSetupStep(1);
       setStatusMessage(
         nextPlan.progress > 0
           ? `${nextPlan.nextLevel} 행동 세 개를 준비했고, 같은 행동의 완료 기록은 유지했어요.`
@@ -576,15 +603,15 @@ export function WealthCopyApp() {
   return (
     <>
       <div className="min-h-screen" ref={pageContentRef}>
-        <header className="sticky top-0 z-30 border-b border-[#dde6ef]/80 bg-white/90 backdrop-blur-xl">
-          <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-5 sm:px-8">
+        <header className="sticky top-0 z-30 border-b border-[#d9ddd8]/80 bg-[#f3f2ed]/92 backdrop-blur-xl">
+          <div className="mx-auto flex h-[4.75rem] max-w-[77.5rem] items-center justify-between px-5 sm:px-8">
             <WealthLogo />
             <div className="flex items-center gap-3">
-              <span className="hidden text-sm font-bold text-[#7a879b] sm:block">
+              <span className="hidden text-sm font-medium text-[#5e6c67] sm:block">
                 {currentMonthLabel}
               </span>
               <button
-                className="min-h-11 rounded-full border border-[#d6e1ec] bg-white px-4 text-sm font-extrabold text-[#33506f] transition hover:border-[#06a4a8] hover:text-[#087f83]"
+                className="min-h-11 rounded-xl border border-[#cfd5d0] bg-[#fffefa] px-4 text-sm font-semibold text-[#203c34] transition-colors hover:border-[#7b9188] hover:bg-white disabled:cursor-wait disabled:opacity-60"
                 disabled={isRestoring}
                 onClick={openSetup}
                 type="button"
@@ -595,7 +622,7 @@ export function WealthCopyApp() {
                     : plan?.progress === 100
                       ? "다시 분류"
                       : plan
-                        ? "다시 만들기"
+                        ? "업데이트"
                         : "시작하기"}
                 </span>
                 <span className="hidden whitespace-nowrap sm:inline">
@@ -604,7 +631,7 @@ export function WealthCopyApp() {
                     : plan?.progress === 100
                       ? "최신 자산으로 재분류"
                       : plan
-                        ? "행동 다시 복제"
+                        ? "자산정보 업데이트"
                         : "시작하기"}
                 </span>
               </button>
@@ -612,70 +639,162 @@ export function WealthCopyApp() {
           </div>
         </header>
 
-        <main className="mx-auto max-w-6xl px-4 py-5 sm:px-8 sm:py-12 lg:py-16">
-          <div className="wc-rise overflow-hidden rounded-[2rem] border border-white/90 bg-white/90 shadow-[0_28px_90px_rgba(24,65,105,0.12)] backdrop-blur">
-            <section className="grid border-b border-[#e2eaf2] lg:grid-cols-[1fr_0.72fr]">
-              <div className="relative overflow-hidden p-5 sm:p-10 lg:p-12">
-                <div
-                  aria-hidden="true"
-                  className="absolute -right-24 -top-28 size-72 rounded-full bg-[#dff7f5] blur-3xl"
-                />
-                <div className="relative">
-                  <p className="text-xs font-black tracking-[0.16em] text-[#078f93]">
-                    {isMaintenanceLevel ? "자산 유지 단계" : "다음 자산 단계"}
+        <main className="mx-auto max-w-[77.5rem] px-4 py-6 sm:px-8 sm:py-12 lg:py-16">
+          {!plan ? (
+            isRestoring ? (
+              <section
+                aria-busy="true"
+                aria-label="이번 달 경로 불러오는 중"
+                className="wc-rise grid min-h-[34rem] animate-pulse gap-5 lg:grid-cols-[1.15fr_0.85fr]"
+              >
+                <div className="rounded-3xl border border-[#d9ddd8] bg-[#fffefa] p-7 sm:p-12">
+                  <div className="h-3 w-28 rounded bg-[#dfe3de]" />
+                  <div className="mt-10 h-16 max-w-lg rounded-xl bg-[#e4e7e2]" />
+                  <div className="mt-5 h-5 max-w-md rounded bg-[#e9ebe7]" />
+                  <div className="mt-14 h-12 w-40 rounded-xl bg-[#dfe3de]" />
+                </div>
+                <div className="rounded-3xl bg-[#17372e] p-7 sm:p-10">
+                  <div className="h-3 w-24 rounded bg-white/15" />
+                  <div className="mt-12 space-y-8">
+                    <div className="h-14 rounded-xl bg-white/10" />
+                    <div className="h-14 rounded-xl bg-white/10" />
+                    <div className="h-14 rounded-xl bg-white/10" />
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <section className="wc-rise grid gap-5 lg:min-h-[37rem] lg:grid-cols-[1.12fr_0.88fr]">
+                <div className="flex flex-col justify-center rounded-3xl border border-[#d9ddd8] bg-[#fffefa] px-6 py-12 sm:px-12 sm:py-16 lg:px-16">
+                  <p className="text-xs font-semibold tracking-[0.12em] text-[#0d705f]">
+                    WEALTHCOPY · MONTHLY PATH
                   </p>
-                  <div className="mt-3 flex items-end gap-5 sm:mt-4">
-                    <span className="text-[4.75rem] font-black leading-none tracking-[-0.09em] text-[#082a66] sm:text-[7rem]">
-                      {nextLevelLabel}
-                    </span>
-                    <span className="mb-3 rounded-full bg-[#e9f9f8] px-3 py-1.5 text-xs font-extrabold text-[#078f93]">
-                      {plan
-                        ? isMaintenanceLevel
-                          ? "L15 유지 단계"
-                          : ASSET_LEVEL_LABELS[plan.nextLevel]
-                        : "분류 전"}
+                  <h1 className="mt-7 max-w-2xl break-keep text-[2.4rem] font-semibold leading-[1.12] tracking-[-0.055em] text-[#0b202a] sm:text-6xl lg:text-[4.5rem]">
+                    자산관리를
+                    <br />
+                    행동으로 바꿉니다.
+                  </h1>
+                  <p className="mt-7 max-w-xl text-base leading-7 text-[#596862] sm:text-lg sm:leading-8">
+                    현재 자산정보를 바탕으로 다음 한 단계를 정리하고, 이번 달에
+                    완료할 행동 3개만 보여드려요.
+                  </p>
+                  {statusMessage ? (
+                    <p className="mt-5 text-sm font-medium leading-6 text-[#596862]">
+                      {statusMessage}
+                    </p>
+                  ) : null}
+                  <div className="mt-9 flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <button
+                      className="inline-flex min-h-14 items-center justify-center gap-5 rounded-xl bg-[#0d705f] px-6 text-[15px] font-semibold text-white shadow-[0_12px_30px_rgba(13,112,95,0.16)] transition-colors hover:bg-[#095b4e]"
+                      onClick={openSetup}
+                      type="button"
+                    >
+                      내 경로 시작하기
+                      <span aria-hidden="true" className="text-lg">→</span>
+                    </button>
+                    <span className="text-sm font-medium text-[#63716b]">
+                      입력 금액은 계산 후 저장하지 않아요
                     </span>
                   </div>
-                  <h1 className="mt-5 max-w-xl text-2xl font-black leading-tight tracking-[-0.05em] text-[#10213f] sm:mt-7 sm:text-4xl">
+                </div>
+
+                <div className="relative overflow-hidden rounded-3xl bg-[#17372e] px-6 py-10 text-white sm:px-10 sm:py-12">
+                  <div aria-hidden="true" className="absolute -right-20 -top-20 size-64 rounded-full border border-white/10" />
+                  <div aria-hidden="true" className="absolute -right-7 -top-7 size-40 rounded-full border border-white/10" />
+                  <div className="relative flex h-full flex-col">
+                    <p className="text-xs font-semibold tracking-[0.12em] text-[#a9c9bd]">
+                      다음 경로는 단순하게
+                    </p>
+                    <h2 className="mt-4 max-w-sm text-3xl font-semibold leading-tight tracking-[-0.04em] sm:text-4xl">
+                      이해보다 실행에
+                      <br />
+                      집중하세요.
+                    </h2>
+                    <ol className="mt-auto pt-16">
+                      {[
+                        ["01", "분류", "자산정보로 현재 단계를 확인합니다."],
+                        ["02", "복제", "다음 단계의 행동 3개를 받습니다."],
+                        ["03", "완료", "이번 달 행동을 하나씩 끝냅니다."],
+                      ].map(([number, title, description]) => (
+                        <li
+                          className="grid grid-cols-[2.5rem_1fr] gap-4 border-t border-white/14 py-5 first:border-t-0"
+                          key={number}
+                        >
+                          <span className="font-mono text-xs text-[#a9c9bd]">{number}</span>
+                          <span>
+                            <strong className="block text-[15px] font-semibold">{title}</strong>
+                            <span className="mt-1 block text-sm leading-6 text-white/62">{description}</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </div>
+              </section>
+            )
+          ) : (
+          <div className="wc-rise space-y-5">
+            <section className="grid overflow-hidden rounded-3xl border border-[#d9ddd8] bg-[#fffefa] shadow-[0_20px_60px_rgba(7,25,32,0.055)] lg:grid-cols-[1.12fr_0.88fr]">
+              <div className="relative overflow-hidden p-6 sm:p-10 lg:p-12">
+                <div
+                  aria-hidden="true"
+                  className="hidden"
+                />
+                <div className="relative">
+                  <p className="text-xs font-semibold tracking-[0.12em] text-[#0d705f]">
+                    {isMaintenanceLevel ? "자산 유지 단계" : "다음 자산 단계"}
+                  </p>
+                  <div className="mt-4 flex flex-wrap items-end gap-x-5 gap-y-2">
+                    <span className="text-[4.5rem] font-semibold leading-none tracking-[-0.08em] text-[#0b202a] tabular-nums sm:text-[6.5rem]">
+                      {plan.nextLevel}
+                    </span>
+                    <span className="mb-2 border-l border-[#aeb8b2] pl-4 text-sm font-medium text-[#53645d] sm:mb-3">
+                      {isMaintenanceLevel
+                        ? "L15 유지 단계"
+                        : ASSET_LEVEL_LABELS[plan.nextLevel]}
+                    </span>
+                  </div>
+                  <h1 className="mt-7 max-w-xl text-3xl font-semibold leading-tight tracking-[-0.045em] text-[#0b202a] sm:text-[2.65rem]">
                     {completedCount === 3
                       ? "이번 달 3가지 행동을 완료했습니다."
-                      : plan
-                        ? isMaintenanceLevel
-                          ? "L15 유지 행동을 실행합니다."
-                          : `${plan.nextLevel} 행동을 실행합니다.`
-                        : "다음 자산 단계의 행동을 복제합니다."}
+                      : isMaintenanceLevel
+                        ? "L15 운영 경로를 유지합니다."
+                        : `${plan.nextLevel} 경로를 복제합니다.`}
                   </h1>
-                  <p className="mt-3 max-w-xl text-base leading-7 text-[#68768c]">
-                    {isMaintenanceLevel
-                      ? "L15 자산 운영을 점검하는 이번 달 행동 3개입니다."
-                      : "다음 단계를 준비하며 이번 달 확인할 3가지 행동입니다."}
+                  <p className="mt-4 max-w-xl text-base leading-7 text-[#596862]">
+                    {completedCount === 3
+                      ? isMaintenanceLevel
+                        ? "다음 달 최신 자산정보로 유지 경로를 다시 준비합니다."
+                        : "다음 레벨은 최신 자산정보를 입력하면 다시 분류됩니다."
+                      : isMaintenanceLevel
+                        ? "이번 달에는 자산 구조와 운영 연속성을 점검합니다."
+                        : "상위 단계로 넘어가기 위해 3가지 행동이 필요합니다."}
                   </p>
                 </div>
               </div>
 
-              <div className="flex flex-col justify-center bg-[#082a66] p-5 text-white sm:p-10 lg:p-12">
-                <p className="text-xs font-black tracking-[0.16em] text-[#79d8d7]">
-                  이번 달 행동 진행률
+              <div className="flex flex-col justify-center border-t border-[#d9ddd8] bg-[#edf2ee] p-6 text-[#0b202a] sm:p-10 lg:border-l lg:border-t-0 lg:p-12">
+                <p className="text-xs font-semibold tracking-[0.12em] text-[#0d705f]">
+                  이번 달 진행률
                 </p>
-                <div className="mt-4 flex items-end justify-between gap-4 sm:mt-5">
-                  <p className="text-5xl font-black tracking-[-0.06em] sm:text-7xl">
-                    {plan?.progress ?? 0}%
+                <div className="mt-5 flex items-end justify-between gap-4">
+                  <p className="text-6xl font-semibold leading-none tracking-[-0.065em] tabular-nums sm:text-7xl">
+                    {plan.progress}%
                   </p>
-                  <p className="pb-2 text-sm font-bold text-white/65">
+                  <p className="pb-1 text-sm font-medium text-[#53645d]">
                     {completedCount} / 3 완료
                   </p>
                 </div>
                 <progress
                   aria-label="이번 달 행동 진행률"
                   aria-describedby="progress-safety-note"
-                  className="wc-progress mt-6"
+                  className="wc-progress mt-7"
                   max={3}
                   value={completedCount}
                 >
-                  {plan?.progress ?? 0}%
+                  {plan.progress}%
                 </progress>
                 <p
-                  className="mt-4 text-xs leading-5 text-white/55"
+                  className="mt-4 text-xs leading-5 text-[#596862]"
                   id="progress-safety-note"
                 >
                   행동 완료율이며 자산 변화나 목표 단계 도달률을 의미하지 않아요.
@@ -683,58 +802,46 @@ export function WealthCopyApp() {
               </div>
             </section>
 
-            <section className="p-4 sm:p-9 lg:p-11">
-              <div className="mb-5 flex flex-col gap-2 sm:mb-7 sm:flex-row sm:items-end sm:justify-between">
+            <section className="rounded-3xl border border-[#d9ddd8] bg-[#fffefa] p-5 sm:p-8 lg:p-10">
+              <div className="mb-6 flex flex-col gap-2 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="text-xs font-black tracking-[0.15em] text-[#078f93]">
-                    이번 달 행동
+                  <p className="text-xs font-semibold tracking-[0.12em] text-[#0d705f]">
+                    이번 달 실행
                   </p>
-                  <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-[#082a66] sm:text-3xl">
-                    이번 달 완료할 3가지 행동
+                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.035em] text-[#0b202a] sm:text-3xl">
+                    {completedCount === 3
+                      ? "완료한 3가지 행동"
+                      : "완료할 3가지 행동"}
                   </h2>
                 </div>
-                <p className="text-sm font-semibold text-[#7a879b]">
-                  {plan
-                    ? completedCount === 3
-                      ? "이번 달 행동을 모두 확인했어요."
-                      : `세 개 중 ${completedCount}개 완료`
-                    : "3가지 행동을 만들면 바로 시작할 수 있어요."}
+                <p className="text-sm font-medium text-[#596862]">
+                  {completedCount === 3
+                    ? "이번 달 행동을 모두 확인했어요."
+                    : `${currentMonthLabel} · ${completedCount}개 완료`}
                 </p>
               </div>
 
-              <fieldset disabled={!plan}>
+              <fieldset>
                 <legend className="sr-only">완료할 행동 세 개</legend>
-                <div className="grid gap-4 lg:grid-cols-3">
-                  {visibleActionIds.map((actionId, index) => {
+                <ol className="overflow-hidden rounded-2xl border border-[#d9ddd8] bg-white">
+                  {plan.actions.map(({ id: actionId, completed }, index) => {
                     const actionCopy = PUBLIC_ACTION_COPY[actionId];
-                    const action = plan?.actions.find(
-                      (item) => item.id === actionId,
-                    );
-                    const completed = action?.completed ?? false;
 
                     return (
-                      <div
+                      <li
                         aria-current={
                           actionId === activeActionId ? "step" : undefined
                         }
-                        className={`group relative rounded-[1.4rem] border p-4 transition focus-within:ring-4 focus-within:ring-[#06a4a8]/25 motion-safe:hover:-translate-y-0.5 sm:min-h-56 sm:rounded-[1.6rem] sm:p-7 ${
-                          plan
-                            ? "cursor-pointer hover:border-[#86cbcc] hover:shadow-[0_16px_38px_rgba(22,75,108,0.09)]"
-                            : "cursor-not-allowed opacity-55"
-                        } ${
+                        className={`group relative border-b border-[#d9ddd8] p-4 transition-colors last:border-b-0 focus-within:z-10 focus-within:ring-4 focus-within:ring-[#0d705f]/16 sm:p-6 ${
                           completed
-                            ? "border-[#78cfd0] bg-[#effafa]"
+                            ? "bg-[#f4f6f3]"
                             : actionId === activeActionId
-                              ? "border-[#4fbfc1] bg-white shadow-[0_16px_38px_rgba(22,75,108,0.1)]"
-                            : "border-[#dce5ee] bg-[#fbfcfe]"
+                              ? "bg-[#edf5f1] before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-[#0d705f]"
+                              : "bg-white hover:bg-[#fafbf8]"
                         }`}
                         key={actionId}
                       >
-                        <label
-                          className={
-                            plan ? "block cursor-pointer" : "block cursor-not-allowed"
-                          }
-                        >
+                        <label className="grid min-h-16 cursor-pointer grid-cols-[2.25rem_1fr_2.75rem] items-start gap-3 sm:grid-cols-[3rem_1fr_8rem] sm:items-center sm:gap-5">
                           <input
                             checked={completed}
                             className="peer sr-only"
@@ -742,72 +849,70 @@ export function WealthCopyApp() {
                             ref={index === 0 ? firstActionInputRef : undefined}
                             type="checkbox"
                           />
-                          <span className="flex items-center justify-between">
+                          <span
+                            aria-hidden="true"
+                            className="font-mono pt-1 text-xs font-medium tracking-[0.08em] text-[#68756f] sm:pt-0"
+                          >
+                            0{index + 1}
+                          </span>
+                          <span className="min-w-0">
                             <span
-                              aria-hidden="true"
-                              className="text-sm font-black tracking-[0.12em] text-[#91a0b3]"
+                              className={`block text-base font-semibold tracking-[-0.02em] sm:text-lg ${
+                                completed ? "text-[#596862]" : "text-[#10251f]"
+                              }`}
                             >
-                              0{index + 1}
+                              {actionCopy.title}
                             </span>
+                            <span className="mt-1.5 block text-sm leading-6 text-[#596862]">
+                              <strong className="mr-1 font-semibold text-[#40534b]">
+                                완료 기준 ·
+                              </strong>
+                              {actionCopy.description}
+                            </span>
+                          </span>
+                          <span className="flex flex-col items-end gap-2">
                             <span
                               aria-hidden="true"
-                              className={`grid size-10 place-items-center rounded-full border-2 text-sm font-black transition ${
+                              className={`grid size-11 place-items-center rounded-full border text-sm font-semibold transition-colors ${
                                 completed
-                                  ? "border-[#06a4a8] bg-[#06a4a8] text-white"
-                                  : "border-[#cbd7e3] bg-white text-transparent"
+                                  ? "border-[#0d705f] bg-[#0d705f] text-white"
+                                  : "border-[#aeb9b3] bg-white text-transparent group-hover:border-[#0d705f]"
                               }`}
                             >
                               ✓
                             </span>
-                          </span>
-                          <span
-                            className={`mt-5 block text-lg font-black tracking-[-0.03em] sm:mt-8 sm:text-xl ${
-                              completed
-                                ? "text-[#4b7281] line-through"
-                                : "text-[#173253]"
-                            }`}
-                          >
-                            {actionCopy.title}
-                          </span>
-                          <span className="mt-3 block text-sm leading-6 text-[#748196]">
-                            <strong className="mr-1 font-extrabold text-[#4b627c]">
-                              완료 기준
-                            </strong>
-                            {actionCopy.description}
-                          </span>
-                          <span className="mt-4 block text-xs font-extrabold text-[#078f93] sm:mt-6">
-                            {completed
-                              ? "완료"
-                              : actionId === activeActionId
-                                ? "지금 할 행동"
-                              : plan
-                                ? "이어 할 행동"
-                                : "복제 후 시작"}
+                            <span className="hidden text-xs font-semibold text-[#53645d] sm:block">
+                              {completed
+                                ? "완료됨"
+                                : actionId === activeActionId
+                                  ? "지금 실행"
+                                  : "다음 행동"}
+                            </span>
                           </span>
                         </label>
-                        {plan && actionId === "schedule_monthly_checkin" ? (
+                        {actionId === "schedule_monthly_checkin" ? (
                           <button
-                            className="mt-4 min-h-11 w-full rounded-xl border border-[#b9dfe0] bg-white px-4 text-xs font-extrabold text-[#087f83] transition hover:border-[#06a4a8] hover:bg-[#f2fbfa]"
+                            className="ml-[3rem] mt-3 min-h-11 rounded-lg px-3 text-xs font-semibold text-[#0d705f] underline decoration-[#9dbbb0] underline-offset-4 transition-colors hover:bg-[#e7f0ec] sm:ml-[4.25rem]"
                             onClick={downloadMonthlyCheckin}
                             type="button"
                           >
-                            월말 일정 파일 받기
+                            캘린더에 월말 점검 추가
                           </button>
                         ) : null}
-                      </div>
+                      </li>
                     );
                   })}
-                </div>
+                </ol>
               </fieldset>
 
               {plan?.progress === 100 ? (
-                <div className="mt-7 flex flex-col items-start justify-between gap-4 rounded-2xl border border-[#b9dfe0] bg-[#f2fbfa] p-5 sm:flex-row sm:items-center sm:px-6">
-                  <p className="text-sm font-bold leading-6 text-[#476579]">
+                <div className="mt-6 flex flex-col items-start justify-between gap-4 border-t border-[#d9ddd8] pt-6 sm:flex-row sm:items-center">
+                  <p className="max-w-2xl text-sm font-medium leading-6 text-[#53645d]">
                     3가지 행동을 완료했어요. 완료만으로 레벨이 오르지는
                     않아요. 최신 가구 자산정보로 현재 레벨을 다시 분류하세요.
                   </p>
                   <button
-                    className="min-h-12 w-full shrink-0 rounded-xl bg-[#087f83] px-6 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(6,164,168,0.18)] transition hover:bg-[#066f72] sm:w-auto"
+                    className="min-h-12 w-full shrink-0 rounded-xl bg-[#0d705f] px-6 text-sm font-semibold text-white transition-colors hover:bg-[#095b4e] sm:w-auto"
                     onClick={openSetup}
                     type="button"
                   >
@@ -815,35 +920,18 @@ export function WealthCopyApp() {
                   </button>
                 </div>
               ) : null}
-
-              {!plan ? (
-                <div className="mt-7 flex flex-col items-center justify-between gap-4 rounded-2xl bg-[#f1f7fb] p-5 sm:flex-row sm:px-6">
-                  <p className="text-sm font-bold leading-6 text-[#5f7188]">
-                    {statusMessage || "이번 달에 완료할 행동 3개를 준비합니다."}
-                  </p>
-                  <button
-                    className="min-h-12 w-full shrink-0 rounded-xl bg-[#082a66] px-6 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(8,42,102,0.18)] transition hover:bg-[#061f51] sm:w-auto"
-                    disabled={isRestoring}
-                    onClick={openSetup}
-                    type="button"
-                  >
-                    {isRestoring
-                      ? "행동 불러오는 중…"
-                      : "레벨 분류하고 행동 3개 받기"}
-                  </button>
-                </div>
-              ) : null}
             </section>
           </div>
+          )}
 
-          <div className="mt-6 flex flex-col gap-3 px-2 text-xs leading-5 text-[#7a879b] sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-7 flex flex-col gap-3 px-1 text-xs leading-5 text-[#596862] sm:flex-row sm:items-center sm:justify-between">
             <p>
               교육용 행동 기록 화면이며 금융 거래를 실행하거나 의사결정을
               대신하지 않습니다.
             </p>
             {plan ? (
               <button
-                className="self-start font-bold text-[#67778c] underline decoration-[#becbd8] underline-offset-4 sm:self-auto"
+                className="min-h-11 self-start px-1 text-xs font-semibold text-[#51635c] underline decoration-[#aeb9b4] underline-offset-4 sm:self-auto"
                 onClick={clearPlan}
                 type="button"
               >
@@ -867,80 +955,88 @@ export function WealthCopyApp() {
           aria-describedby="setup-description"
           aria-labelledby="setup-title"
           aria-modal="true"
-          className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-[#041b43]/60 p-4 backdrop-blur-sm sm:p-6"
+          className="fixed inset-0 z-50 grid place-items-center bg-[#071d18]/62 backdrop-blur-sm sm:p-6"
           role="dialog"
         >
           <div
             aria-busy={isPreparing}
-            className="my-auto w-full max-w-3xl rounded-[2rem] bg-white p-6 shadow-2xl sm:p-8"
+            className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[#fffefa] shadow-[0_32px_96px_rgba(3,18,24,0.3)] sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:max-w-[42rem] sm:rounded-3xl"
             ref={dialogRef}
           >
-            <div className="flex items-start justify-between gap-5">
+            <div className="shrink-0 border-b border-[#d9ddd8] px-5 py-5 sm:px-8 sm:py-6">
+              <div className="flex items-start justify-between gap-5">
               <div>
-                <p className="text-xs font-black tracking-[0.15em] text-[#078f93]">
-                  ASSET SNAPSHOT → ACTION COPY
+                <p className="text-xs font-semibold tracking-[0.1em] text-[#0d705f]">
+                  {setupStep} / 2
                 </p>
                 <h2
-                  className="mt-2 text-3xl font-black tracking-[-0.045em] text-[#082a66]"
+                  className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#0b202a] sm:text-3xl"
                   id="setup-title"
                 >
-                  가구 자산정보로 다음 행동을 준비해요
+                  {setupStep === 1 ? "내 자산 경로 만들기" : "이번 달 실행 여건"}
                 </h2>
                 <p
-                  className="mt-3 max-w-lg text-sm leading-6 text-[#6d7b90]"
+                  className="mt-2 max-w-lg text-sm leading-6 text-[#596862]"
                   id="setup-description"
                 >
-                  총자산과 총부채로 현재 레벨을 내부에서 분류한 뒤, 다음
-                  레벨을 준비하는 행동 3개만 보여드려요. 입력 금액은 이번
-                  요청의 단계 계산에만 사용하고 저장하지 않으며 OpenAI
-                  모델에도 전달하지 않습니다. 계산된 레벨과 행동 완료
-                  기록만 이 기기에 저장합니다.
+                  {setupStep === 1
+                    ? "정확한 금액은 레벨 계산 후 저장하지 않습니다."
+                    : "금액 대신 비율과 선택형 참고 구간으로 행동을 조정합니다."}
                 </p>
               </div>
               <button
                 aria-label="행동 만들기 닫기"
-                className="grid size-11 shrink-0 place-items-center rounded-full border border-[#d8e3ed] text-xl text-[#6f7e92] transition hover:bg-[#f3f7fa]"
+                className="grid size-11 shrink-0 place-items-center rounded-full border border-[#cbd2cd] text-xl font-light text-[#53645d] transition-colors hover:bg-[#edf2ee]"
                 onClick={closeSetup}
                 type="button"
               >
                 ×
               </button>
+              </div>
+              <div aria-hidden="true" className="mt-5 grid grid-cols-2 gap-2">
+                <span className="h-1 rounded-full bg-[#0d705f]" />
+                <span className={`h-1 rounded-full ${setupStep === 2 ? "bg-[#0d705f]" : "bg-[#d9ddd8]"}`} />
+              </div>
             </div>
 
-            <form className="mt-7" onSubmit={handleCreatePlan}>
-              <fieldset disabled={isPreparing}>
+            <form
+              className="flex min-h-0 flex-1 flex-col"
+              noValidate
+              onSubmit={setupStep === 1 ? handleSetupContinue : handleCreatePlan}
+            >
+              <fieldset className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-7" disabled={isPreparing}>
                 <legend className="sr-only">
                   자산 레벨 분류와 행동 생성에 사용할 현재 조건
                 </legend>
 
-                <section className="rounded-2xl border border-[#cfe1e7] bg-[#f5fbfb] p-5 sm:p-6">
-                  <p className="text-[11px] font-black tracking-[0.14em] text-[#078f93]">
-                    STEP 1 · ASSET SNAPSHOT
+                {setupStep === 1 ? (
+                <section>
+                  <p className="text-[11px] font-semibold tracking-[0.11em] text-[#0d705f]">
+                    가구 자산
                   </p>
-                  <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-[#173253]">
-                    지금의 가구 순자산을 알려주세요
+                  <h3 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#10251f]">
+                    지금 알고 있는 추정값이면 충분해요
                   </h3>
-                  <p className="mt-2 text-xs leading-5 text-[#708095]">
+                  <p className="mt-2 text-sm leading-6 text-[#596862]">
                     순자산은 가구 기준 총자산에서 총부채를 뺀 값입니다. 정확한
                     감정가가 아니어도 현재 알고 있는 범위의 추정값이면 돼요.
                   </p>
 
                   {plan?.progress === 100 ? (
-                    <p className="mt-4 rounded-xl border border-[#b9dfe0] bg-white px-4 py-3 text-xs font-bold leading-5 text-[#087f83]">
+                    <p className="mt-5 rounded-xl border border-[#c8d8d1] bg-[#edf5f1] px-4 py-3 text-xs font-medium leading-5 text-[#285648]">
                       행동 완료만으로 레벨이 오르지는 않아요. 아래 값을 최신
                       상태로 확인해 제출하면 현재 레벨을 처음부터 다시
                       분류합니다.
                     </p>
                   ) : null}
 
-                  <div className="mt-5 grid gap-5 sm:grid-cols-2">
-                    <label className="text-sm font-extrabold text-[#31415d]">
+                  <div className="mt-7 grid gap-6 sm:grid-cols-2">
+                    <label className="text-sm font-semibold text-[#273d35]">
                       가구 기준 총자산
-                      <span className="ml-1 font-normal text-[#8995a8]">
-                        (억원)
-                      </span>
+                      <div className="relative mt-2">
                       <input
-                        aria-describedby="total-assets-help"
+                        aria-describedby={`total-assets-help${setupError?.includes("총자산") ? " setup-error" : ""}`}
+                        aria-invalid={setupError?.includes("총자산") || undefined}
                         className={inputClass}
                         inputMode="decimal"
                         max={MAX_EOK_INPUT}
@@ -960,8 +1056,10 @@ export function WealthCopyApp() {
                         type="number"
                         value={profile.totalAssetsEok}
                       />
+                      <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-sm font-medium text-[#596862]">억원</span>
+                      </div>
                       <span
-                        className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
+                        className="mt-2 block text-xs font-normal leading-5 text-[#596862]"
                         id="total-assets-help"
                       >
                         예금·투자자산·부동산 등 가구가 보유한 자산의 현재 추정
@@ -969,13 +1067,12 @@ export function WealthCopyApp() {
                       </span>
                     </label>
 
-                    <label className="text-sm font-extrabold text-[#31415d]">
+                    <label className="text-sm font-semibold text-[#273d35]">
                       가구 기준 총부채
-                      <span className="ml-1 font-normal text-[#8995a8]">
-                        (억원)
-                      </span>
+                      <div className="relative mt-2">
                       <input
-                        aria-describedby="total-debt-help"
+                        aria-describedby={`total-debt-help${setupError?.includes("총부채") ? " setup-error" : ""}`}
+                        aria-invalid={setupError?.includes("총부채") || undefined}
                         className={inputClass}
                         inputMode="decimal"
                         max={MAX_EOK_INPUT}
@@ -995,8 +1092,10 @@ export function WealthCopyApp() {
                         type="number"
                         value={profile.totalDebtEok}
                       />
+                      <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-sm font-medium text-[#596862]">억원</span>
+                      </div>
                       <span
-                        className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
+                        className="mt-2 block text-xs font-normal leading-5 text-[#596862]"
                         id="total-debt-help"
                       >
                         주택담보·신용·기타 대출 등 가구가 갚아야 할 부채의 현재
@@ -1005,40 +1104,33 @@ export function WealthCopyApp() {
                     </label>
                   </div>
 
-                  <div className="mt-5 flex flex-col gap-2 rounded-xl bg-[#082a66] px-4 py-3 text-white sm:flex-row sm:items-center sm:justify-between">
-                    <span className="text-xs font-bold text-white/70">
-                      현재 레벨
-                    </span>
-                    <strong className="text-sm">
-                      제출 후 순자산 기준으로 자동 분류 · L1–L15
-                    </strong>
+                  <div className="mt-7 flex items-start gap-3 rounded-xl bg-[#edf2ee] px-4 py-4 text-[#29483e]">
+                    <span aria-hidden="true" className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border border-[#7d9a8f] text-[10px]">✓</span>
+                    <p className="text-xs leading-5">
+                      순자산으로 L1–L15를 내부 분류하고 다음 단계만 보여드려요.
+                      계좌번호나 상품별 상세정보는 입력하지 마세요.
+                    </p>
                   </div>
-                  <p className="mt-3 text-xs leading-5 text-[#708095]">
-                    L15는 순자산 1조원 이상 자산군입니다. 계좌번호나 상품별
-                    상세정보는 입력하지 마세요.
-                  </p>
+                  <details className="mt-3 px-1 text-xs text-[#596862]">
+                    <summary className="cursor-pointer font-semibold text-[#40534b]">입력정보 처리 안내</summary>
+                    <p className="mt-2 leading-5">입력 금액은 이번 요청의 단계 계산에만 사용하고 저장하지 않으며 OpenAI 모델에도 전달하지 않습니다. 계산된 레벨과 행동 완료 기록만 이 기기에 저장합니다.</p>
+                  </details>
                 </section>
-
-                <section className="mt-5 rounded-2xl border border-[#dbe6ee] bg-white p-5 sm:p-6">
-                  <p className="text-[11px] font-black tracking-[0.14em] text-[#078f93]">
-                    STEP 2 · ACTION SIGNALS
+                ) : (
+                <section>
+                  <p className="text-[11px] font-semibold tracking-[0.11em] text-[#0d705f]">
+                    실행 여건
                   </p>
-                  <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-[#173253]">
+                  <h3 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#10251f]">
                     실행 여건에 맞게 행동을 조정해요
                   </h3>
-                  <p className="mt-2 text-xs leading-5 text-[#708095]">
-                    금액이 아닌 비율과 선택형 참고 구간으로 이번 달 행동
-                    구성을 조정합니다.
-                  </p>
-
-                  <div className="mt-5 grid gap-5 md:grid-cols-3">
-                    <label className="text-sm font-extrabold text-[#31415d]">
-                      소득 대비 실행 비율
-                      <span className="ml-1 font-normal text-[#8995a8]">
-                        (%)
-                      </span>
+                  <div className="mt-7 grid gap-6 sm:grid-cols-2">
+                    <label className="text-sm font-semibold text-[#273d35]">
+                      월소득 중 저축·상환 비율
+                      <div className="relative mt-2">
                       <input
-                        aria-describedby="execution-ratio-help"
+                        aria-describedby={`execution-ratio-help${setupError?.includes("실행 비율") ? " setup-error" : ""}`}
+                        aria-invalid={setupError?.includes("실행 비율") || undefined}
                         className={inputClass}
                         max="100"
                         min="0"
@@ -1056,50 +1148,21 @@ export function WealthCopyApp() {
                         type="number"
                         value={profile.incomeExecutionRatio}
                       />
+                      <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-sm font-medium text-[#596862]">%</span>
+                      </div>
                       <span
-                        className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
+                        className="mt-2 block text-xs font-normal leading-5 text-[#596862]"
                         id="execution-ratio-help"
                       >
                         월소득 중 저축·상환에 배정할 비중
                       </span>
                     </label>
-                    <label className="text-sm font-extrabold text-[#31415d]">
-                      자가 선택 자산 참고 구간
-                      <span className="ml-1 font-normal text-[#8995a8]">
-                        (선택)
-                      </span>
-                      <select
-                        aria-describedby="asset-percentile-help"
-                        className={inputClass}
-                        onChange={(event) =>
-                          updateProfile({
-                            assetPercentileBand: event.target
-                              .value as PsidAssetPercentileBand,
-                          })
-                        }
-                        value={profile.assetPercentileBand}
-                      >
-                        <option value="unknown">잘 모르겠어요</option>
-                        <option value="below_25">참조 분포 · 25백분위 미만</option>
-                        <option value="p25_49">참조 분포 · 25–49백분위</option>
-                        <option value="p50_74">참조 분포 · 50–74백분위</option>
-                        <option value="p75_89">참조 분포 · 75–89백분위</option>
-                        <option value="p90_plus">참조 분포 · 90백분위 이상</option>
-                      </select>
-                      <span
-                        className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
-                        id="asset-percentile-help"
-                      >
-                        잘 모르면 건너뛰세요. 선택형 참고 신호일 뿐이에요.
-                      </span>
-                    </label>
-                    <label className="text-sm font-extrabold text-[#31415d]">
-                      부채비율
-                      <span className="ml-1 font-normal text-[#8995a8]">
-                        (%)
-                      </span>
+                    <label className="text-sm font-semibold text-[#273d35]">
+                      월소득 대비 부채 상환 비율
+                      <div className="relative mt-2">
                       <input
-                        aria-describedby="debt-ratio-help"
+                        aria-describedby={`debt-ratio-help${setupError?.includes("부채비율") ? " setup-error" : ""}`}
+                        aria-invalid={setupError?.includes("부채비율") || undefined}
                         className={inputClass}
                         max="100"
                         min="0"
@@ -1117,8 +1180,10 @@ export function WealthCopyApp() {
                         type="number"
                         value={profile.debtServiceRatio}
                       />
+                      <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-sm font-medium text-[#596862]">%</span>
+                      </div>
                       <span
-                        className="mt-2 block text-xs font-normal leading-5 text-[#7a879b]"
+                        className="mt-2 block text-xs font-normal leading-5 text-[#596862]"
                         id="debt-ratio-help"
                       >
                         월 부채 상환액 ÷ 월소득
@@ -1126,12 +1191,35 @@ export function WealthCopyApp() {
                     </label>
                   </div>
 
+                  <label className="mt-6 block text-sm font-semibold text-[#273d35]">
+                    비슷한 가구 중 내 자산 위치
+                    <span className="ml-1 font-normal text-[#68756f]">(선택)</span>
+                    <select
+                      aria-describedby="asset-percentile-help"
+                      className={`${inputClass} mt-2 pr-10`}
+                      onChange={(event) =>
+                        updateProfile({
+                          assetPercentileBand: event.target.value as PsidAssetPercentileBand,
+                        })
+                      }
+                      value={profile.assetPercentileBand}
+                    >
+                      <option value="unknown">잘 모르겠어요</option>
+                      <option value="below_25">참조 분포 · 25백분위 미만</option>
+                      <option value="p25_49">참조 분포 · 25–49백분위</option>
+                      <option value="p50_74">참조 분포 · 50–74백분위</option>
+                      <option value="p75_89">참조 분포 · 75–89백분위</option>
+                      <option value="p90_plus">참조 분포 · 90백분위 이상</option>
+                    </select>
+                    <span className="mt-2 block text-xs font-normal leading-5 text-[#596862]" id="asset-percentile-help">잘 모르면 건너뛰세요. 경로를 정하는 참고 신호일 뿐이에요.</span>
+                  </label>
+
                   <details
-                    className="mt-4 rounded-2xl border border-[#dce6ee] bg-[#fbfcfe] px-4 py-3 text-sm text-[#66758a]"
+                    className="mt-5 rounded-xl border border-[#d9ddd8] bg-[#fafbf8] px-4 py-3 text-sm text-[#596862]"
                     id="psid-reference-note"
                   >
-                    <summary className="cursor-pointer font-extrabold text-[#35506d]">
-                      PSID 참고 구간 안내
+                    <summary className="cursor-pointer font-semibold text-[#40534b]">
+                      데이터 기준 안내
                     </summary>
                     <p className="mt-2 leading-6">
                       공개된 2019 PSID 가구 순자산 분포 표의
@@ -1140,17 +1228,17 @@ export function WealthCopyApp() {
                     </p>
                   </details>
 
-                  <details className="mt-4 rounded-2xl border border-[#dce6ee] px-4 py-3">
-                    <summary className="cursor-pointer text-sm font-extrabold text-[#35506d]">
+                  <details className="mt-3 rounded-xl border border-[#d9ddd8] px-4 py-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-[#40534b]">
                       이번 달 변화 추가
-                      <span className="ml-1 font-normal text-[#8995a8]">
+                      <span className="ml-1 font-normal text-[#68756f]">
                         (선택)
                       </span>
                     </summary>
-                    <label className="mt-3 block text-sm font-extrabold text-[#31415d]">
+                    <label className="mt-3 block text-sm font-semibold text-[#273d35]">
                       이름·연락처·계좌·금액 없이 상황만 적어 주세요
                       <textarea
-                        className="mt-2 min-h-24 w-full resize-none rounded-2xl border border-[#d8e3ee] bg-white px-4 py-3 text-[15px] font-semibold leading-6 text-[#10213f] outline-none transition placeholder:font-normal placeholder:text-[#9aa7b9] focus:border-[#06a4a8] focus:ring-4 focus:ring-[#06a4a8]/10"
+                        className="mt-2 min-h-24 w-full resize-none rounded-xl border border-[#cbd2cd] bg-[#fffefa] px-4 py-3 text-[15px] font-medium leading-6 text-[#10251f] outline-none transition placeholder:font-normal placeholder:text-[#68746f] focus:border-[#0d705f] focus:bg-white focus:ring-4 focus:ring-[#0d705f]/12"
                         maxLength={500}
                         onChange={(event) => {
                           setConstraintNote(event.target.value);
@@ -1162,11 +1250,12 @@ export function WealthCopyApp() {
                     </label>
                   </details>
                 </section>
+                )}
               </fieldset>
 
               {setupError ? (
                 <p
-                  className="mt-4 rounded-xl border border-[#f1c7bb] bg-[#fff5f2] px-4 py-3 text-sm font-semibold leading-6 text-[#9c4c34]"
+                  className="mx-5 mb-4 rounded-xl border border-[#dcb8b1] bg-[#fff5f2] px-4 py-3 text-sm font-medium leading-6 text-[#8b4037] sm:mx-8"
                   id="setup-error"
                   role="alert"
                 >
@@ -1174,22 +1263,26 @@ export function WealthCopyApp() {
                 </p>
               ) : null}
 
-              <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <div className="shrink-0 border-t border-[#d9ddd8] bg-[#fffefa] px-5 py-4 sm:flex sm:items-center sm:justify-between sm:px-8">
                 <button
-                  className="min-h-12 rounded-xl border border-[#d5e0ea] px-5 text-sm font-extrabold text-[#64748a]"
-                  onClick={closeSetup}
+                  className="min-h-12 w-full rounded-xl px-5 text-sm font-semibold text-[#53645d] transition-colors hover:bg-[#edf2ee] sm:w-auto"
+                  onClick={setupStep === 1 ? closeSetup : returnToAssetSnapshot}
                   type="button"
                 >
-                  취소
+                  {setupStep === 1 ? "취소" : "이전"}
                 </button>
                 <button
-                  className="min-h-12 rounded-xl bg-[#082a66] px-6 text-sm font-extrabold text-white transition hover:bg-[#061f51] disabled:cursor-wait disabled:opacity-60"
+                  className="mt-2 min-h-12 w-full rounded-xl bg-[#0d705f] px-6 text-sm font-semibold text-white transition-colors hover:bg-[#095b4e] disabled:cursor-wait disabled:opacity-60 sm:mt-0 sm:w-auto"
                   disabled={isPreparing}
                   type="submit"
                 >
-                  {isPreparing
-                    ? "레벨 분류와 행동 준비 중…"
-                    : "레벨 분류하고 행동 3개 복제"}
+                  {setupStep === 1
+                    ? "계속"
+                    : isPreparing
+                      ? "경로 준비 중…"
+                      : plan
+                        ? "최신 경로 다시 만들기"
+                        : "내 경로 만들기"}
                 </button>
               </div>
             </form>

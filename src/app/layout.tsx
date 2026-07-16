@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
+import { Noto_Sans_KR } from "next/font/google";
 import "./globals.css";
+
+const notoSansKr = Noto_Sans_KR({
+  display: "swap",
+  subsets: ["latin"],
+  variable: "--font-noto-sans-kr",
+});
 
 export const metadata: Metadata = {
   title: "WealthCopy | 분석보다 행동",
@@ -14,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body className={notoSansKr.variable}>{children}</body>
     </html>
   );
 }
