@@ -26,6 +26,7 @@ import {
   COMPOSITION_METHODOLOGY,
   levelCompositionBenchmark,
 } from "./level-composition-benchmarks";
+import { levelRoutePolicy } from "./level-route-policy";
 
 const likelySensitiveDataPattern =
   /(?:[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|01[016789][ -]?\d{3,4}[ -]?\d{4}|\d{6}[ -]?\d{7}|(?:계좌|통장|주민(?:등록)?번호).{0,20}\d[\d -]{6,}\d)/i;
@@ -125,6 +126,7 @@ returns, probabilities, timing promises, reasons, or user-facing copy.`;
 
 type HardStopId =
   | "nonpositive_net_worth"
+  | "negative_monthly_cashflow"
   | "high_debt_service"
   | "short_liquid_runway"
   | "high_debt_to_assets"
@@ -175,7 +177,7 @@ const FRAME_PURPOSES = {
 const FRAME_COPY = {
   verify_then_plan: {
     summary:
-      "기타·회수예정 항목을 먼저 식별하고 같은 기준일로 금액을 맞춘 뒤, 검증된 구성으로 우선순위를 다시 계산합니다.",
+      "확인이 필요한 입력을 먼저 정리하고 같은 기준일로 금액을 맞춘 뒤, 확인된 구성으로 우선순위를 다시 계산합니다.",
   },
   protect_then_build: {
     summary:
@@ -187,7 +189,7 @@ const FRAME_COPY = {
   },
   structure_then_scale: {
     summary:
-      "첫 우선순위를 확인한 뒤 월 가용여력 안에서 구성 격차와 다음 구간 차이를 단계적으로 다시 계산합니다.",
+      "첫 우선순위를 확인한 뒤 입력 기준 월 잔여액 안에서 구성 격차와 다음 구간 차이를 단계적으로 다시 계산합니다.",
   },
 } as const satisfies Record<
   ReportFramingId,
@@ -266,7 +268,21 @@ function sumAssets(assets: ReportRequest["profile"]["assets"]) {
 }
 
 function formatKrw(amount: number) {
-  return `${Math.round(amount).toLocaleString("ko-KR")}원`;
+  const rounded = Math.round(amount);
+  if (rounded === 0) return "0원";
+  const sign = rounded < 0 ? "-" : "";
+  const absolute = Math.abs(rounded);
+  const jo = Math.floor(absolute / 1_000_000_000_000);
+  const eok = Math.floor((absolute % 1_000_000_000_000) / 100_000_000);
+  const manwon = Math.floor((absolute % 100_000_000) / 10_000);
+  const won = absolute % 10_000;
+  const parts = [
+    jo > 0 ? `${jo.toLocaleString("ko-KR")}조` : "",
+    eok > 0 ? `${eok.toLocaleString("ko-KR")}억` : "",
+    manwon > 0 ? `${manwon.toLocaleString("ko-KR")}만원` : "",
+    won > 0 ? `${won.toLocaleString("ko-KR")}원` : "",
+  ].filter(Boolean);
+  return `${sign}${parts.join(" ")}`;
 }
 
 function constraintSummary(note: string) {
@@ -302,21 +318,23 @@ function levelPositionPercent(level: AssetLevel, netWorthKrw: number) {
 function compositionRows(
   assets: ReportRequest["profile"]["assets"],
   totalAssetsKrw: number,
+  targetGrossAssetsKrw: number,
   targetLevel: AssetLevel,
 ): WealthReport["composition"] {
   const benchmark = levelCompositionBenchmark(targetLevel);
 
   return ASSET_COMPOSITION_KEYS.map((key) => {
     const currentAmountKrw = assets[key];
-    const currentSharePercent =
+    const currentShareRaw =
       totalAssetsKrw === 0
         ? 0
-        : roundToOne((currentAmountKrw / totalAssetsKrw) * 100);
+        : (currentAmountKrw / totalAssetsKrw) * 100;
+    const currentSharePercent = roundToOne(currentShareRaw);
     const reference = benchmark.composition[key];
     const direction =
-      currentSharePercent < reference.minPercent
+      currentShareRaw < reference.minPercent
         ? ("below" as const)
-        : currentSharePercent > reference.maxPercent
+        : currentShareRaw > reference.maxPercent
           ? ("above" as const)
           : ("within" as const);
     const boundary =
@@ -324,12 +342,16 @@ function compositionRows(
         ? reference.minPercent
         : direction === "above"
           ? reference.maxPercent
-          : currentSharePercent;
+          : currentShareRaw;
     const gapPercentagePoints = roundToOne(
-      Math.abs(currentSharePercent - boundary),
+      Math.abs(currentShareRaw - boundary),
     );
-    const estimatedGapKrw = Math.round(
-      (totalAssetsKrw * gapPercentagePoints) / 100,
+    const targetReferenceMinimumKrw = Math.round(
+      (targetGrossAssetsKrw * reference.minPercent) / 100,
+    );
+    const estimatedGapKrw = Math.max(
+      0,
+      targetReferenceMinimumKrw - currentAmountKrw,
     );
 
     return {
@@ -352,6 +374,13 @@ function liquidRunwayMonths(liquidKrw: number, monthlyRequiredOutflowKrw: number
   return roundToOne(Math.min(120, liquidKrw / monthlyRequiredOutflowKrw));
 }
 
+function threeMonthSafetyReserveKrw(monthlyRequiredOutflowKrw: number) {
+  return Math.min(
+    MAX_REPORT_AMOUNT_KRW,
+    monthlyRequiredOutflowKrw * 3,
+  );
+}
+
 function collectRisks(
   request: ReportRequest,
   totalAssetsKrw: number,
@@ -363,6 +392,11 @@ function collectRisks(
 ) {
   const hardStops: HardStopId[] = [];
   const risks: WealthReport["risks"] = [];
+  const monthlyRequiredOutflowKrw =
+    request.profile.monthlyLivingExpenseKrw +
+    request.profile.monthlyDebtPaymentKrw;
+  const monthlyBalanceKrw =
+    request.profile.monthlyIncomeKrw - monthlyRequiredOutflowKrw;
 
   if (netWorthKrw < 0) {
     hardStops.push("nonpositive_net_worth");
@@ -371,6 +405,14 @@ function collectRisks(
       title: "순자산 회복이 먼저입니다",
       description:
         "총부채가 총자산보다 큽니다. 상위 구간 구성 조정보다 순자산을 0원 위로 회복하는 계획을 우선합니다.",
+    });
+  }
+  if (monthlyBalanceKrw < 0) {
+    hardStops.push("negative_monthly_cashflow");
+    risks.push({
+      severity: "critical",
+      title: "입력 기준 월 현금흐름이 적자입니다",
+      description: `월 세후소득보다 필수생활비와 부채상환액의 합계가 ${formatKrw(Math.abs(monthlyBalanceKrw))} 큽니다. 자산구성 조정보다 반복되는 부족액의 원인과 조정 가능 범위를 먼저 확인합니다.`,
     });
   }
   if (debtServiceRatioPercent >= 40) {
@@ -430,21 +472,42 @@ function collectRisks(
 
   if (request.profile.next90DayEvent !== "none") {
     const eventPlan = EVENT_PLANS[request.profile.next90DayEvent];
-    if (request.profile.next90DayAmountKrw > request.profile.assets.liquid) {
+    const eventAmountKrw = request.profile.next90DayAmountKrw;
+    const eventFundingShortfallKrw = Math.max(
+      0,
+      eventAmountKrw - request.profile.assets.liquid,
+    );
+    const minimumSafetyReserveKrw = threeMonthSafetyReserveKrw(
+      monthlyRequiredOutflowKrw,
+    );
+    const postEventLiquidKrw = Math.max(
+      0,
+      request.profile.assets.liquid - eventAmountKrw,
+    );
+    const postEventSafetyShortfallKrw = Math.max(
+      0,
+      minimumSafetyReserveKrw - postEventLiquidKrw,
+    );
+    if (eventFundingShortfallKrw > 0 || postEventSafetyShortfallKrw > 0) {
       hardStops.push("near_term_liquidity_shortfall");
-      const shortfall =
-        request.profile.next90DayAmountKrw - request.profile.assets.liquid;
       risks.push({
         severity: "critical",
-        title: `90일 ${eventPlan.label} 자금이 부족합니다`,
-        description: `${eventPlan.label} 예정액 ${formatKrw(request.profile.next90DayAmountKrw)} 중 ${formatKrw(shortfall)}가 현재 현금·예금으로 충당되지 않습니다. ${eventPlan.review}`,
+        title:
+          eventFundingShortfallKrw > 0
+            ? `90일 ${eventPlan.label} 자금이 부족합니다`
+            : `90일 ${eventPlan.label} 뒤 3개월 안전선이 부족합니다`,
+        description:
+          eventFundingShortfallKrw > 0
+            ? `${eventPlan.label} 예정액 ${formatKrw(eventAmountKrw)} 중 ${formatKrw(eventFundingShortfallKrw)}가 현재 현금·예금으로 충당되지 않습니다. ${eventPlan.review}`
+            : `${eventPlan.label} 예정액을 지급하면 현금·예금이 ${formatKrw(postEventLiquidKrw)} 남아 생활비와 부채상환액 3개월 기준보다 ${formatKrw(postEventSafetyShortfallKrw)} 부족합니다. ${eventPlan.review}`,
+      });
+    } else {
+      risks.push({
+        severity: "warning",
+        title: `90일 ${eventPlan.label} 일정을 반영해야 합니다`,
+        description: `${eventPlan.review} 지급 뒤 현금·예금 ${formatKrw(postEventLiquidKrw)}가 남아 현재 입력 기준 3개월 안전선을 유지합니다.`,
       });
     }
-    risks.push({
-      severity: "warning",
-      title: `90일 ${eventPlan.label} 일정을 반영해야 합니다`,
-      description: eventPlan.review,
-    });
   }
   if (request.profile.incomeStability !== "stable") {
     risks.push({
@@ -474,7 +537,17 @@ function collectRisks(
     });
   }
 
-  return { hardStops, risks: risks.slice(0, 8) };
+  const severityOrder = { critical: 0, warning: 1, info: 2 } as const;
+  const uniqueRisks = [
+    ...new Map(risks.map((risk) => [risk.title, risk])).values(),
+  ].sort(
+    (left, right) =>
+      severityOrder[left.severity] - severityOrder[right.severity],
+  );
+  return {
+    hardStops: [...new Set(hardStops)],
+    risks: uniqueRisks.slice(0, 8),
+  };
 }
 
 function confidenceFor(
@@ -523,6 +596,20 @@ function hardStopPriority(
     0,
     next90DayAmountKrw - liquidAmountKrw,
   );
+  const monthlyRequiredOutflowKrw =
+    report.cashflow.monthlyLivingExpenseKrw +
+    report.cashflow.monthlyDebtPaymentKrw;
+  const threeMonthSafetyKrw = threeMonthSafetyReserveKrw(
+    monthlyRequiredOutflowKrw,
+  );
+  const postEventLiquidKrw = Math.max(
+    0,
+    liquidAmountKrw - next90DayAmountKrw,
+  );
+  const postEventSafetyShortfallKrw = Math.max(
+    0,
+    threeMonthSafetyKrw - postEventLiquidKrw,
+  );
   const eventPlan =
     next90DayEvent === "none"
       ? {
@@ -544,12 +631,23 @@ function hardStopPriority(
       guardrail:
         "순자산이 양수가 되기 전에는 수익률·상품·거래를 전제로 경로를 확대하지 않습니다.",
     },
+    negative_monthly_cashflow: {
+      title: "입력 기준 월 부족액 해소",
+      diagnosis: `필수생활비와 부채상환액을 제외한 월 부족액은 ${formatKrw(Math.abs(report.cashflow.monthlyBalanceKrw))}입니다.`,
+      guidance:
+        "최근 3개월의 실제 필수유출과 변동지출을 분리해 반복되는 적자 원인을 확인하고, 자산구성 조정보다 월 현금흐름의 균형을 먼저 복원합니다.",
+      metric: `월 부족액 ${formatKrw(Math.abs(report.cashflow.monthlyBalanceKrw))}`,
+      checkpoint:
+        "다음 달 실제 세후소득과 필수유출을 같은 기준으로 다시 비교합니다.",
+      guardrail:
+        "월 적자가 해소되기 전에는 신규 장기 약정이나 유동성이 낮은 자산 확대를 전제로 하지 않습니다.",
+    },
     high_debt_service: {
       title: "월 부채상환 부담 완충",
       diagnosis: `월 부채상환 비율은 ${report.cashflow.debtServiceRatioPercent}%입니다.`,
       guidance:
         "대출별 금리·만기·상환액을 한 표에 모으고, 연체 없이 유지 가능한 월 상환선과 조정이 필요한 조건을 구분합니다.",
-      metric: `월 부채상환 ${formatKrw(report.cashflow.monthlyDebtPaymentKrw)}`,
+      metric: `월 상환 ${formatKrw(report.cashflow.monthlyDebtPaymentKrw)} · 소득 대비 ${report.cashflow.debtServiceRatioPercent}%`,
       checkpoint: "다음 90일의 만기와 금리 변경 일정을 확인합니다.",
       guardrail:
         "상환조건 변경은 비용과 불이익을 확인한 뒤 금융기관 또는 전문가와 검토합니다.",
@@ -559,7 +657,7 @@ function hardStopPriority(
       diagnosis: `현재 유동성 여력은 ${report.cashflow.liquidRunwayMonths ?? 0}개월입니다.`,
       guidance:
         "월 가용금액 범위에서 생활비와 부채상환액 합계 3개월선까지 현금·예금의 우선순위를 높이고 가까운 지출 예정액을 별도로 둡니다.",
-      metric: `월 필수유출 ${formatKrw(report.cashflow.monthlyLivingExpenseKrw + report.cashflow.monthlyDebtPaymentKrw)}`,
+      metric: `3개월 필요 ${formatKrw(threeMonthSafetyKrw)} · 부족 ${formatKrw(Math.max(0, threeMonthSafetyKrw - liquidAmountKrw))}`,
       checkpoint:
         "매월 말 현금·예금 ÷ (월 생활비 + 월 부채상환액)을 다시 확인합니다.",
       guardrail:
@@ -570,7 +668,7 @@ function hardStopPriority(
       diagnosis: `총자산 대비 부채 비율은 ${report.cashflow.debtToAssetRatioPercent}%입니다.`,
       guidance:
         "담보·만기·금리 위험이 큰 부채부터 우선순위를 정하고, 월 가용금액을 넘지 않는 상환 점검선을 둡니다.",
-      metric: `다음 구간 순자산 격차 ${formatKrw(report.level.gapKrw)}`,
+      metric: `총자산 대비 부채 ${report.cashflow.debtToAssetRatioPercent}%`,
       checkpoint: "분기마다 총자산과 총부채를 같은 기준일로 갱신합니다.",
       guardrail:
         "자산 매각이나 차환은 거래비용·세금·중도상환 조건을 확인하기 전 실행하지 않습니다.",
@@ -587,10 +685,19 @@ function hardStopPriority(
         "가격 전망을 근거로 매각을 서두르지 말고 세금·계약·시장성을 별도로 확인합니다.",
     },
     near_term_liquidity_shortfall: {
-      title: `90일 ${eventPlan.label} 부족분 확인`,
-      diagnosis: `${eventPlan.label} 예정액은 ${formatKrw(next90DayAmountKrw)}, 현재 현금·예금은 ${formatKrw(liquidAmountKrw)}이며 부족액은 ${formatKrw(nearTermShortfallKrw)}입니다.`,
-      guidance: `${eventPlan.review} 부족분은 만기 도래 자금·월 현금흐름·조정 가능한 지출로 나눠 확인합니다.`,
-      metric: `${eventPlan.label} 부족액 ${formatKrw(nearTermShortfallKrw)}`,
+      title:
+        nearTermShortfallKrw > 0
+          ? `90일 ${eventPlan.label} 부족분 확인`
+          : `90일 ${eventPlan.label} 뒤 안전선 보완`,
+      diagnosis:
+        nearTermShortfallKrw > 0
+          ? `${eventPlan.label} 예정액은 ${formatKrw(next90DayAmountKrw)}, 현재 현금·예금은 ${formatKrw(liquidAmountKrw)}이며 이벤트 자체 부족액은 ${formatKrw(nearTermShortfallKrw)}입니다.`
+          : `${eventPlan.label} 지급 뒤 현금·예금은 ${formatKrw(postEventLiquidKrw)}이며 3개월 안전선까지 ${formatKrw(postEventSafetyShortfallKrw)} 부족합니다.`,
+      guidance: `${eventPlan.review} 이벤트 자금과 지급 뒤 3개월 안전선을 함께 확보할 수 있는지 만기 도래 자금·월 현금흐름·조정 가능한 지출로 나눠 확인합니다.`,
+      metric:
+        nearTermShortfallKrw > 0
+          ? `이벤트 자체 부족 ${formatKrw(nearTermShortfallKrw)}`
+          : `이벤트 후 안전선 부족 ${formatKrw(postEventSafetyShortfallKrw)}`,
       checkpoint: eventPlan.checkpoint,
       guardrail: eventPlan.guardrail,
     },
@@ -642,8 +749,67 @@ function dataVerificationPriorities(): PriorityDraft[] {
   ];
 }
 
+function zeroAssetPriorities(
+  base: Pick<WealthReport, "level" | "cashflow" | "composition">,
+): PriorityDraft[] {
+  const monthlyRequiredOutflowKrw =
+    base.cashflow.monthlyLivingExpenseKrw +
+    base.cashflow.monthlyDebtPaymentKrw;
+  const threeMonthSafetyKrw = threeMonthSafetyReserveKrw(
+    monthlyRequiredOutflowKrw,
+  );
+  return [
+    {
+      title: "0원 자산 스냅샷 재확인",
+      diagnosis:
+        "현재 여덟 자산군의 입력 합계가 0원이라 다음 구간의 구성 차이를 확정할 수 없습니다.",
+      guidance:
+        "보유 자산이 실제로 없는지, 누락된 계좌·보증금·연금·회수예정 금액이 없는지 같은 기준일로 다시 확인합니다.",
+      metric: "입력 총자산 0원",
+      checkpoint:
+        "보유하지 않은 항목은 0원, 확인하지 못한 항목은 확인 후 같은 날짜 기준으로 다시 입력합니다.",
+      guardrail:
+        "자산 확인 전에는 0원으로 계산된 구성 격차를 실제 조정 목표로 사용하지 않습니다.",
+    },
+    {
+      title:
+        threeMonthSafetyKrw > 0
+          ? "첫 유동성 안전선 확인"
+          : "월 현금흐름 기준선 확인",
+      diagnosis:
+        base.cashflow.monthlyBalanceKrw > 0
+          ? `현재 입력 기준 월 잔여액은 ${formatKrw(base.cashflow.monthlyBalanceKrw)}입니다.`
+          : base.cashflow.monthlyBalanceKrw < 0
+            ? `현재 입력 기준 월 부족액은 ${formatKrw(Math.abs(base.cashflow.monthlyBalanceKrw))}입니다.`
+            : "현재 입력 기준 월 세후소득과 필수유출의 차이는 0원입니다.",
+      guidance:
+        "최근 실제 소득과 필수생활비·부채상환액을 다시 맞춘 뒤 반복 가능한 월 잔여액과 가까운 지출을 분리합니다.",
+      metric:
+        threeMonthSafetyKrw > 0
+          ? `3개월 필수유출 ${formatKrw(threeMonthSafetyKrw)}`
+          : "월 필수유출 기준 확인",
+      checkpoint:
+        "다음 달 실제 잔여액과 입력값의 차이를 같은 기준으로 다시 확인합니다.",
+      guardrail:
+        "반복 가능한 월 잔여액을 확인하기 전에는 장기 배정액을 고정하지 않습니다.",
+    },
+    {
+      title: `${base.level.next} 순자산 기준 확인`,
+      diagnosis: `다음 구간 기준까지 순자산 ${formatKrw(base.level.gapKrw)}의 차이가 있습니다.`,
+      guidance:
+        "수익률이나 승급 시점을 가정하지 않고 실제 자산 증가와 부채 감소를 같은 순자산 기록에서 확인합니다.",
+      metric: `다음 구간 격차 ${formatKrw(base.level.gapKrw)}`,
+      checkpoint:
+        "자산 입력을 확인한 뒤 최신 순자산으로 레벨과 격차를 다시 계산합니다.",
+      guardrail:
+        "확인 전에는 다음 구간 참고구성을 상품·거래 목표로 사용하지 않습니다.",
+    },
+  ];
+}
+
 function buildPriorities(
   base: Pick<WealthReport, "level" | "cashflow" | "composition">,
+  totalAssetsKrw: number,
   hardStops: readonly HardStopId[],
   holdForUnclassifiedOther: boolean,
   next90DayEvent: ReportRequest["profile"]["next90DayEvent"],
@@ -655,10 +821,11 @@ function buildPriorities(
     urgent_constraint: 0,
     near_term_liquidity_shortfall: 1,
     nonpositive_net_worth: 2,
-    high_debt_service: 3,
-    short_liquid_runway: 4,
-    high_debt_to_assets: 5,
-    illiquid_concentration: 6,
+    negative_monthly_cashflow: 3,
+    high_debt_service: 4,
+    short_liquid_runway: 5,
+    high_debt_to_assets: 6,
+    illiquid_concentration: 7,
   };
   for (const id of [...hardStops].sort(
     (left, right) => hardStopOrder[left] - hardStopOrder[right],
@@ -666,6 +833,16 @@ function buildPriorities(
     drafts.push(
       hardStopPriority(id, base, next90DayEvent, next90DayAmountKrw),
     );
+  }
+
+  if (totalAssetsKrw === 0) {
+    drafts.push(...zeroAssetPriorities(base));
+    return [...new Map(drafts.map((draft) => [draft.title, draft])).values()]
+      .slice(0, 3)
+      .map((priority, index) => ({
+        ...priority,
+        rank: (index + 1) as 1 | 2 | 3,
+      }));
   }
 
   if (holdForUnclassifiedOther) {
@@ -683,25 +860,25 @@ function buildPriorities(
       base.cashflow.monthlyBalanceKrw < 0
         ? "월 부족액부터 해소"
         : base.cashflow.monthlyDeployableKrw > 0
-          ? "월 가용금액을 반복 가능한 범위로 고정"
-          : "월 가용금액부터 복원",
+          ? "입력 기준 월 잔여액의 반복 가능성 확인"
+          : "월 잔여액부터 복원",
     diagnosis:
       base.cashflow.monthlyBalanceKrw < 0
         ? `현재 입력 기준 월 부족액은 ${formatKrw(Math.abs(base.cashflow.monthlyBalanceKrw))}입니다.`
-        : `현재 입력 기준 월 가용금액은 ${formatKrw(base.cashflow.monthlyDeployableKrw)}입니다.`,
+        : `현재 입력 기준 월 잔여액은 ${formatKrw(base.cashflow.monthlyDeployableKrw)}입니다.`,
     guidance:
       base.cashflow.monthlyBalanceKrw < 0
         ? "월 생활비와 부채상환액을 다시 확인해 적자를 만드는 항목과 조정 가능한 항목을 분리합니다."
         : base.cashflow.monthlyDeployableKrw > 0
-        ? "소득 변동과 가까운 지출을 반영해 매월 유지 가능한 금액을 정하고 안전선·부채·구성 격차 순서로 배분 기준을 기록합니다."
+        ? "비정기 지출과 소득 변동을 반영해 매월 반복 가능한 잔여액 범위를 확인하고 안전선·부채·구성 격차 순서로 검토합니다."
         : "월 생활비와 부채상환액을 다시 확인해 적자를 만드는 항목과 조정 가능한 항목을 분리합니다.",
     metric:
       base.cashflow.monthlyBalanceKrw < 0
         ? `월 부족액 ${formatKrw(Math.abs(base.cashflow.monthlyBalanceKrw))}`
-        : `월 가용금액 ${formatKrw(base.cashflow.monthlyDeployableKrw)}`,
-    checkpoint: "매월 실제 잔여금액과 계획한 가용금액의 차이를 기록합니다.",
+        : `입력 기준 월 잔여액 ${formatKrw(base.cashflow.monthlyDeployableKrw)}`,
+    checkpoint: "매월 실제 잔여금액과 입력 기준 잔여액의 차이를 기록합니다.",
     guardrail:
-      "월 가용금액보다 큰 자동이체나 장기 약정을 설정하지 않습니다.",
+      "비정기 지출을 확인하기 전에는 입력 기준 월 잔여액 전부를 자동이체나 장기 약정으로 고정하지 않습니다.",
   };
   if (base.cashflow.monthlyBalanceKrw <= 0) {
     drafts.push(cashflowPriority);
@@ -715,9 +892,13 @@ function buildPriorities(
     const liquidAmountKrw =
       base.composition.find((row) => row.key === "liquid")
         ?.currentAmountKrw ?? 0;
+    const postEventLiquidKrw = Math.max(
+      0,
+      liquidAmountKrw - next90DayAmountKrw,
+    );
     drafts.push({
       title: `90일 ${eventPlan.label} 자금 분리`,
-      diagnosis: `${eventPlan.label} 예정액은 ${formatKrw(next90DayAmountKrw)}이며 현재 현금·예금 ${formatKrw(liquidAmountKrw)} 안에서 충당 가능합니다.`,
+      diagnosis: `${eventPlan.label} 예정액 ${formatKrw(next90DayAmountKrw)}을 지급한 뒤 현금·예금 ${formatKrw(postEventLiquidKrw)}가 남아 현재 입력 기준 3개월 안전선을 유지합니다.`,
       guidance: `${eventPlan.review} 확인된 예정액은 장기 구조 조정 재원과 분리해 둡니다.`,
       metric: `${eventPlan.label} 예정액 ${formatKrw(next90DayAmountKrw)}`,
       checkpoint: eventPlan.checkpoint,
@@ -771,10 +952,13 @@ function buildPriorities(
       guidance:
         dominantGap.direction === "below"
           ? actionableUnderKeys.includes(dominantGap.key)
-            ? "안전 중단조건이 없다면 월 가용금액 안에서 이 자산 역할의 우선순위를 검토합니다. 구체적인 상품·거래는 별도 판단입니다."
+            ? "안전 중단조건이 없다면 반복 가능한 월 잔여액 안에서 이 자산 역할의 우선순위를 검토합니다. 구체적인 상품·거래는 별도 판단입니다."
             : "이 차이는 상위 구간 내부 참고범위와의 포트폴리오 역할 차이로만 해석합니다. 부동산·사업·비상장·대체자산을 새로 취득하거나 비중을 채우라는 목표가 아닙니다."
           : "기존 보유분의 즉시 매각보다 신규 자금의 추가 배정을 멈추고 다른 부족 자산군과의 균형을 먼저 확인합니다.",
-      metric: `현재 자산 기준 추정 격차 ${formatKrw(dominantGap.estimatedGapKrw)}`,
+      metric:
+        dominantGap.estimatedGapKrw > 0
+          ? `다음 구간 참고 하단까지 ${formatKrw(dominantGap.estimatedGapKrw)}`
+          : `현재 구성비 차이 ${dominantGap.gapPercentagePoints}%p`,
       checkpoint: "3개월 뒤 같은 기준으로 구성비와 원화 격차를 다시 계산합니다.",
       guardrail:
         "내부 참고범위는 거래 지시가 아닙니다. 세금·비용·유동성·위험을 확인하지 않은 매수·매도는 제안하지 않습니다.",
@@ -834,6 +1018,10 @@ function routeFor(
   const copy = FRAME_COPY[framingId];
   const priorities = report.priorities;
   const horizons = ["0-3개월", "4-6개월", "7-12개월"] as const;
+  const policy = levelRoutePolicy(report.level.current);
+  const routeLabel = report.level.terminal
+    ? `${report.level.current} ${policy.name}`
+    : `${report.level.current}→${report.level.next} ${policy.name}`;
 
   if (framingId === "protect_then_build") {
     const simultaneousChecks = report.risks
@@ -841,38 +1029,37 @@ function routeFor(
       .map((risk) => risk.title)
       .join(" · ");
     return {
-      title: "안전 중단조건을 함께 다루는 12개월 경로",
-      summary: copy.summary,
+      title: `${routeLabel} · 안전조건 우선`,
+      summary: `${policy.objective} ${copy.summary}`,
       stages: [
         {
           horizon: "0-3개월",
           title: "안전 중단조건 동시 점검",
-          description: `두 번째·세 번째 위험을 뒤 기간으로 미루지 않고 같은 기간에 함께 확인합니다: ${simultaneousChecks || priorities.map((priority) => priority.title).join(" · ")}.`,
+          description: `확인된 위험을 뒤 기간으로 미루지 않고 같은 기간에 함께 점검합니다: ${simultaneousChecks || priorities.map((priority) => priority.title).join(" · ")}.`,
         },
         {
           horizon: "4-6개월",
-          title: "동일 기준일로 안전조건 재검증",
-          description:
-            "자산·부채·월 생활비·부채상환액·90일 일정을 같은 기준일로 다시 입력해 모든 중단조건을 재평가합니다. 하나라도 남으면 안전 점검을 계속합니다.",
+          title: policy.stages[1].title,
+          description: `${policy.stages[1].focus} 자산·부채·월 생활비·부채상환액·90일 일정을 같은 기준일로 다시 입력해 모든 중단조건을 재평가합니다. 하나라도 남으면 안전 점검을 계속합니다.`,
         },
         {
           horizon: "7-12개월",
-          title: "조건부 다음 레벨 재계산",
-          description:
-            "모든 안전 중단조건이 해소된 경우에만 최신 순자산과 구성으로 다음 레벨 격차를 다시 계산합니다. 해소되지 않았다면 상위 구간 조정을 시작하지 않습니다.",
+          title: policy.stages[2].title,
+          description: report.level.terminal
+            ? `${policy.stages[2].focus} 안전 중단조건이 남아 있으면 L15 운영 기준의 구조 변경을 보류합니다.`
+            : `${policy.stages[2].focus} 모든 안전 중단조건이 해소된 경우에만 최신 순자산과 구성으로 ${report.level.next} 격차를 다시 계산합니다.`,
         },
       ],
     };
   }
 
-  const firstPriority = priorities[0];
   return {
-    title: `${firstPriority.title}에서 시작하는 12개월 경로`,
-    summary: `첫 0–3개월은 “${firstPriority.title}”에 집중합니다. ${copy.summary}`,
-    stages: priorities.map((priority, index) => ({
+    title: routeLabel,
+    summary: `${policy.objective} ${copy.summary}`,
+    stages: policy.stages.map((stage, index) => ({
       horizon: horizons[index],
-      title: priority.title,
-      description: `${priority.guidance} 점검 기준: ${priority.checkpoint}`,
+      title: stage.title,
+      description: `${stage.focus} 이 기간의 우선 검토는 “${priorities[index].title}”입니다. ${priorities[index].guidance} 확인 기준: ${priorities[index].checkpoint}`,
     })),
   };
 }
@@ -903,6 +1090,9 @@ export function createReportContext(
   const { nextLevel, targetNetWorthKrw } =
     targetNetWorthForLevel(currentLevel);
   const terminal = currentLevel === "L15";
+  const targetGrossAssetsKrw = terminal
+    ? totalAssetsKrw
+    : targetNetWorthKrw + totalDebtKrw;
   const gapKrw = terminal
     ? 0
     : Math.max(0, targetNetWorthKrw - netWorthKrw);
@@ -943,6 +1133,7 @@ export function createReportContext(
   const composition = compositionRows(
     parsed.profile.assets,
     totalAssetsKrw,
+    targetGrossAssetsKrw,
     nextLevel,
   );
   const otherShare =
@@ -998,6 +1189,7 @@ export function createReportContext(
       : baseRisks;
   const priorities = buildPriorities(
     { level, cashflow, composition },
+    totalAssetsKrw,
     hardStops,
     otherShare > 10,
     parsed.profile.next90DayEvent,
@@ -1050,7 +1242,12 @@ export function createReportContext(
       nearTermCoverage:
         parsed.profile.next90DayEvent === "none"
           ? "none"
-          : parsed.profile.next90DayAmountKrw > parsed.profile.assets.liquid
+          : parsed.profile.next90DayAmountKrw +
+                threeMonthSafetyReserveKrw(
+                  parsed.profile.monthlyLivingExpenseKrw +
+                    parsed.profile.monthlyDebtPaymentKrw,
+                ) >
+              parsed.profile.assets.liquid
             ? "shortfall"
             : "covered",
     },

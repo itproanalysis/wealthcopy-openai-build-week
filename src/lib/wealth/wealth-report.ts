@@ -4,7 +4,7 @@ import { assetLevelSchema, nextAssetLevelSchema } from "./asset-level";
 
 export const WEALTH_REPORT_VERSION = "wealth-report-v1" as const;
 export const WEALTH_REPORT_METHODOLOGY_VERSION =
-  "composition-policy-v1" as const;
+  "composition-policy-v2" as const;
 export const MAX_REPORT_AMOUNT_KRW = 8_000_000_000_000_000;
 
 export const ASSET_COMPOSITION_KEYS = [

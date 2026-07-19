@@ -5,12 +5,14 @@
 - [ ] The setup collects all eight asset groups without connected-account claims.
 - [ ] The report shows current L1–L15 band, next band, threshold gap and in-band position.
 - [ ] L15 is presented as a terminal operating band.
-- [ ] Every composition row shows current share, internal reference range, direction and estimated gap.
+- [ ] Every composition row shows current amount/share, internal reference share, next-band amount range and estimated gap under the current-debt assumption.
 - [ ] Cashflow covers deployable amount, living-cost ratio, debt-service ratio, liquid runway and debt-to-asset ratio.
 - [ ] Critical safeguards appear before structural guidance.
 - [ ] The report contains three ranked priorities with diagnosis, guidance, metric, checkpoint and guardrail.
-- [ ] The route contains 0–3, 4–6 and 7–12 month horizons.
+- [ ] Every L1–L15 route has a level-specific purpose and contains 0–3, 4–6 and 7–12 month horizons.
 - [ ] Data confidence is visible and uncertain holdings reduce confidence.
+- [ ] A 90-day event preserves three months of required outflow; a one-won shortfall activates a safeguard.
+- [ ] Editing from a generated report preserves the user's entered values.
 - [ ] No completion tracker, behavior history, product recommendation or automatic-promotion claim remains.
 
 ## API and privacy

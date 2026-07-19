@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type FormEvent,
+  type SetStateAction,
+} from "react";
 
 import {
   ASSET_COMPOSITION_KEYS,
@@ -37,6 +45,7 @@ type SetupState = {
 
 const KRW_PER_MANWON = 10_000;
 const KRW_PER_EOK = 100_000_000;
+const KRW_PER_JO = 1_000_000_000_000;
 const REPORT_TIMEOUT_MS = 25_000;
 const SESSION_KEY = "wealthcopy-anonymous-session-v2";
 const LEGACY_STORAGE_KEYS = [
@@ -111,6 +120,13 @@ const INITIAL_SETUP: SetupState = {
   constraintNote: "",
 };
 
+function createInitialSetup(): SetupState {
+  return {
+    ...INITIAL_SETUP,
+    assets: { ...EMPTY_ASSETS },
+  };
+}
+
 const inputClassName = "wc-input";
 
 function parseNonNegative(value: string) {
@@ -138,14 +154,16 @@ function formatKrw(value: number) {
 
   const absolute = Math.abs(value);
   const sign = value < 0 ? "-" : "";
-  const eok = Math.floor(absolute / KRW_PER_EOK);
+  const jo = Math.floor(absolute / KRW_PER_JO);
+  const eok = Math.floor((absolute % KRW_PER_JO) / KRW_PER_EOK);
   const manwon = Math.floor((absolute % KRW_PER_EOK) / KRW_PER_MANWON);
 
-  if (eok > 0 && manwon > 0) {
-    return `${sign}${eok.toLocaleString("ko-KR")}억 ${manwon.toLocaleString("ko-KR")}만원`;
-  }
-  if (eok > 0) return `${sign}${eok.toLocaleString("ko-KR")}억원`;
-  return `${sign}${manwon.toLocaleString("ko-KR")}만원`;
+  const parts = [
+    jo > 0 ? `${jo.toLocaleString("ko-KR")}조` : "",
+    eok > 0 ? `${eok.toLocaleString("ko-KR")}억` : "",
+    manwon > 0 ? `${manwon.toLocaleString("ko-KR")}만원` : "",
+  ].filter(Boolean);
+  return `${sign}${parts.join(" ")}`;
 }
 
 function makeSessionId() {
@@ -236,8 +254,8 @@ function Landing({ onStart }: { onStart: () => void }) {
             비교합니다.
           </h1>
           <p>
-            총액만 보는 자산관리를 넘어, 내 윗구간은 무엇으로 구성되어 있고
-            나는 어디가 얼마나 다른지 한 번에 진단합니다.
+            L1부터 1조원 이상 L15까지 순자산 구간을 판정하고, 내 윗구간은
+            무엇으로 구성되어 있으며 나는 어디가 얼마나 다른지 한 번에 진단합니다.
           </p>
           <div className="wc-hero-actions">
             <button className="wc-primary-button" type="button" onClick={onStart}>
@@ -249,12 +267,12 @@ function Landing({ onStart }: { onStart: () => void }) {
 
         <div className="wc-preview-card wc-rise" aria-label="리포트 구성 미리보기">
           <div className="wc-preview-head">
-            <div><span>STRUCTURE PREVIEW</span><strong>L6 <i /> L7</strong></div>
-            <div className="wc-preview-score"><small>구간 위치</small><b>42%</b></div>
+            <div><span>ALL WEALTH BANDS</span><strong>L1 <i /> L15</strong></div>
+            <div className="wc-preview-score"><small>전체 구간</small><b>15</b></div>
           </div>
           <div className="wc-preview-gap">
-            <span>다음 구간까지 남은 순자산</span>
-            <strong>1억 4,800만원</strong>
+            <span>내 현재 구간에서 바로 다음 구간까지</span>
+            <strong>순자산 기준 자동 판정</strong>
           </div>
           <div className="wc-preview-bars">
             <div><span>내 구성</span><i className="seg-a" /><i className="seg-b" /><i className="seg-c" /><i className="seg-d" /></div>
@@ -262,9 +280,9 @@ function Landing({ onStart }: { onStart: () => void }) {
           </div>
           <div className="wc-preview-insight">
             <Icon name="spark" />
-            <p><span>가장 큰 구조 차이</span><strong>상장 금융자산 · 참고범위까지 7.0%p</strong></p>
+            <p><span>다음 구간 비교</span><strong>8개 자산군 · 참고 금액범위 · 우선 검토 3가지</strong></p>
           </div>
-          <div className="wc-preview-watermark">WEALTHCOPY / SAMPLE</div>
+          <div className="wc-preview-watermark">WEALTHCOPY / L1—L15</div>
         </div>
       </section>
 
@@ -284,7 +302,7 @@ function StepRail({ step }: { step: SetupStep }) {
       {labels.map((label, index) => {
         const number = (index + 1) as SetupStep;
         const state = number === step ? "active" : number < step ? "done" : "";
-        return <li className={state} key={label}><span>{number < step ? "✓" : number}</span><strong>{label}</strong></li>;
+        return <li aria-current={number === step ? "step" : undefined} className={state} key={label}><span>{number < step ? "✓" : number}</span><strong>{label}</strong></li>;
       })}
     </ol>
   );
@@ -299,21 +317,41 @@ function UnitSwitch({ unit, onChange }: { unit: MoneyUnit; onChange: (unit: Mone
   );
 }
 
-function SetupFlow({ onCancel, onComplete }: { onCancel: () => void; onComplete: (report: WealthReport) => void }) {
+function SetupFlow({
+  onCancel,
+  onComplete,
+  setup,
+  setSetup,
+}: {
+  onCancel: () => void;
+  onComplete: (report: WealthReport) => void;
+  setup: SetupState;
+  setSetup: Dispatch<SetStateAction<SetupState>>;
+}) {
   const [step, setStep] = useState<SetupStep>(1);
-  const [setup, setSetup] = useState<SetupState>(INITIAL_SETUP);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const errorRef = useRef<HTMLDivElement>(null);
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const requestControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    if (error) errorRef.current?.focus();
+    if (!error) return;
+    const firstInvalid = document.querySelector<HTMLElement>(
+      ".wc-setup-form [aria-invalid='true']",
+    );
+    (firstInvalid ?? errorRef.current)?.focus();
   }, [error]);
 
   useEffect(() => {
     stepHeadingRef.current?.focus();
   }, [step]);
+
+  useEffect(() => () => {
+    requestIdRef.current += 1;
+    requestControllerRef.current?.abort();
+  }, []);
 
   const assetAmounts = useMemo(() => Object.fromEntries(
     ASSET_COMPOSITION_KEYS.map((key) => [key, amountToKrw(setup.assets[key], setup.assetUnit)]),
@@ -326,16 +364,37 @@ function SetupFlow({ onCancel, onComplete }: { onCancel: () => void; onComplete:
   const monthlyBalancePreview = monthlyToKrw(setup.monthlyIncome)
     - monthlyToKrw(setup.monthlyLivingExpense)
     - monthlyToKrw(setup.monthlyDebtPayment);
+  const assetFieldInvalid = (key: AssetCompositionKey) => Boolean(
+    error && step === 1 && (
+      setup.assets[key].trim() === "" ||
+      !Number.isSafeInteger(assetAmounts[key]) ||
+      assetAmounts[key] < 0
+    ),
+  );
+  const requiredMoneyFieldInvalid = (
+    value: string,
+    parsed: number,
+    targetStep: SetupStep,
+  ) => Boolean(
+    error && step === targetStep && (
+      value.trim() === "" || !Number.isSafeInteger(parsed) || parsed < 0
+    ),
+  );
+
+  function updateSetup(updater: SetStateAction<SetupState>) {
+    setError(null);
+    setSetup(updater);
+  }
 
   function updateAsset(key: AssetCompositionKey, value: string) {
-    setSetup((current) => ({ ...current, assets: { ...current.assets, [key]: value } }));
+    updateSetup((current) => ({ ...current, assets: { ...current.assets, [key]: value } }));
   }
 
   function switchAssetUnit(nextUnit: MoneyUnit) {
     if (nextUnit === setup.assetUnit) return;
     const currentScale = setup.assetUnit === "eok" ? KRW_PER_EOK : KRW_PER_MANWON;
     const nextScale = nextUnit === "eok" ? KRW_PER_EOK : KRW_PER_MANWON;
-    setSetup((current) => ({
+    updateSetup((current) => ({
       ...current,
       assetUnit: nextUnit,
       totalDebt: (() => {
@@ -407,13 +466,19 @@ function SetupFlow({ onCancel, onComplete }: { onCancel: () => void; onComplete:
     const stepTwoError = validateStep(2);
     const stepThreeError = validateStep(3);
     if (stepOneError || stepTwoError || stepThreeError) {
+      const invalidStep: SetupStep = stepOneError ? 1 : stepTwoError ? 2 : 3;
+      setStep(invalidStep);
       setError(stepOneError ?? stepTwoError ?? stepThreeError);
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    requestControllerRef.current?.abort();
     const controller = new AbortController();
+    requestControllerRef.current = controller;
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     const timeout = window.setTimeout(() => controller.abort(), REPORT_TIMEOUT_MS);
 
     try {
@@ -448,14 +513,21 @@ function SetupFlow({ onCancel, onComplete }: { onCancel: () => void; onComplete:
 
       const parsed = wealthReportSchema.safeParse(body);
       if (!parsed.success) throw new Error("리포트 응답 형식이 올바르지 않습니다.");
-      onComplete(parsed.data);
+      if (requestId === requestIdRef.current && !controller.signal.aborted) {
+        onComplete(parsed.data);
+      }
     } catch (caught) {
-      setError(caught instanceof DOMException && caught.name === "AbortError"
-        ? "분석 시간이 길어지고 있습니다. 잠시 후 다시 시도해 주세요."
-        : caught instanceof Error ? caught.message : "리포트를 만들지 못했습니다.");
+      if (requestId === requestIdRef.current) {
+        setError(caught instanceof DOMException && caught.name === "AbortError"
+          ? "분석 시간이 길어지고 있습니다. 잠시 후 다시 시도해 주세요."
+          : caught instanceof Error ? caught.message : "리포트를 만들지 못했습니다.");
+      }
     } finally {
       window.clearTimeout(timeout);
-      setIsLoading(false);
+      if (requestId === requestIdRef.current) {
+        requestControllerRef.current = null;
+        setIsLoading(false);
+      }
     }
   }
 
@@ -467,7 +539,8 @@ function SetupFlow({ onCancel, onComplete }: { onCancel: () => void; onComplete:
         <span className="wc-step-count">0{step} / 03</span>
       </div>
 
-      <form className="wc-setup-form wc-rise" onSubmit={submit}>
+      <form className="wc-setup-form wc-rise" onSubmit={submit} aria-busy={isLoading}>
+        <fieldset className="wc-form-lock" disabled={isLoading}>
         {step === 1 ? (
           <section>
             <header className="wc-form-header">
@@ -482,12 +555,13 @@ function SetupFlow({ onCancel, onComplete }: { onCancel: () => void; onComplete:
                   <label className="wc-asset-input" key={key}>
                     <span className="wc-asset-index">{meta.index}</span>
                     <span className="wc-asset-copy"><strong>{meta.label}</strong><small>{meta.description}</small></span>
-                    <span className="wc-money-field"><input inputMode="decimal" min="0" step="any" value={setup.assets[key]} onChange={(event) => updateAsset(key, event.target.value)} aria-label={`${meta.label} 금액`} placeholder="0" /><b>{setup.assetUnit === "eok" ? "억" : "만"}</b></span>
+                    <span className="wc-money-field"><input inputMode="decimal" min="0" step="any" value={setup.assets[key]} onChange={(event) => updateAsset(key, event.target.value)} aria-label={`${meta.label} 금액`} aria-invalid={assetFieldInvalid(key)} aria-describedby={assetFieldInvalid(key) ? "wc-form-error" : undefined} placeholder="0" /><b>{setup.assetUnit === "eok" ? "억" : "만"}</b></span>
                     <em>{setup.assets[key] === "" ? "미입력" : formatKrw(amount)}</em>
                   </label>
                 );
               })}
             </div>
+            <button className="wc-zero-fill" type="button" onClick={() => updateSetup((current) => ({ ...current, assets: Object.fromEntries(ASSET_COMPOSITION_KEYS.map((key) => [key, current.assets[key].trim() === "" ? "0" : current.assets[key]])) as Record<AssetCompositionKey, string> }))}>빈 자산 항목을 0원으로 확인</button>
             <div className="wc-total-strip"><span>입력한 가구 총자산</span><strong>{formatKrw(totalAssetsKrw)}</strong><small>본인·배우자 포함 8개 자산군 합계 · 같은 평가기준일</small></div>
           </section>
         ) : null}
@@ -497,16 +571,16 @@ function SetupFlow({ onCancel, onComplete }: { onCancel: () => void; onComplete:
             <header className="wc-form-header"><div><span>STEP 02</span><h1 ref={stepHeadingRef} tabIndex={-1}>우리 가구의 부채와 한 달 흐름을 알려 주세요.</h1><p>1단계와 동일하게 본인과 배우자를 포함한 가구 기준으로 입력해 주세요. 순자산 격차와 유동성·상환부담을 같은 기준으로 진단하며, 해당 금액이 없으면 0을 입력합니다.</p></div></header>
             <div className="wc-form-section">
               <div className="wc-section-title"><span>01</span><div><h2>현재 부채</h2><p>본인·배우자 명의의 주택담보, 신용, 사업자 대출 등 현재 남은 원금을 합산합니다.</p></div></div>
-              <label className="wc-field-row"><span><strong>총 부채</strong><small>현재 남은 원금 합계</small></span><span className="wc-field-with-unit"><input className={inputClassName} inputMode="decimal" min="0" step="any" placeholder="0" value={setup.totalDebt} onChange={(event) => setSetup((current) => ({ ...current, totalDebt: event.target.value }))} /><b>{setup.assetUnit === "eok" ? "억원" : "만원"}</b></span></label>
+              <label className="wc-field-row"><span><strong>총 부채</strong><small>현재 남은 원금 합계</small></span><span className="wc-field-with-unit"><input className={inputClassName} inputMode="decimal" min="0" step="any" placeholder="0" value={setup.totalDebt} onChange={(event) => updateSetup((current) => ({ ...current, totalDebt: event.target.value }))} aria-invalid={requiredMoneyFieldInvalid(setup.totalDebt, amountToKrw(setup.totalDebt, setup.assetUnit), 2)} aria-describedby={requiredMoneyFieldInvalid(setup.totalDebt, amountToKrw(setup.totalDebt, setup.assetUnit), 2) ? "wc-form-error" : undefined} /><b>{setup.assetUnit === "eok" ? "억원" : "만원"}</b></span></label>
             </div>
             <div className="wc-form-section">
               <div className="wc-section-title"><span>02</span><div><h2>가구 월 현금흐름</h2><p>본인·배우자 합산 기준의 월평균 금액을 만원 단위로 입력합니다.</p></div></div>
               <div className="wc-three-fields">
-                <label><span>월 세후소득</span><div className="wc-field-with-unit"><input className={inputClassName} inputMode="decimal" min="0" step="any" placeholder="예: 650" value={setup.monthlyIncome} onChange={(event) => setSetup((current) => ({ ...current, monthlyIncome: event.target.value }))} /><b>만원</b></div></label>
-                <label><span>필수 생활비</span><div className="wc-field-with-unit"><input className={inputClassName} inputMode="decimal" min="0" step="any" placeholder="예: 320" value={setup.monthlyLivingExpense} onChange={(event) => setSetup((current) => ({ ...current, monthlyLivingExpense: event.target.value }))} /><b>만원</b></div></label>
-                <label><span>월 부채상환액</span><div className="wc-field-with-unit"><input className={inputClassName} inputMode="decimal" min="0" step="any" placeholder="예: 90" value={setup.monthlyDebtPayment} onChange={(event) => setSetup((current) => ({ ...current, monthlyDebtPayment: event.target.value }))} /><b>만원</b></div></label>
+                <label><span>월 세후소득</span><div className="wc-field-with-unit"><input className={inputClassName} inputMode="decimal" min="0" step="any" placeholder="예: 650" value={setup.monthlyIncome} onChange={(event) => updateSetup((current) => ({ ...current, monthlyIncome: event.target.value }))} aria-invalid={requiredMoneyFieldInvalid(setup.monthlyIncome, monthlyToKrw(setup.monthlyIncome), 2)} aria-describedby={requiredMoneyFieldInvalid(setup.monthlyIncome, monthlyToKrw(setup.monthlyIncome), 2) ? "wc-form-error" : undefined} /><b>만원</b></div></label>
+                <label><span>필수 생활비</span><div className="wc-field-with-unit"><input className={inputClassName} inputMode="decimal" min="0" step="any" placeholder="예: 320" value={setup.monthlyLivingExpense} onChange={(event) => updateSetup((current) => ({ ...current, monthlyLivingExpense: event.target.value }))} aria-invalid={requiredMoneyFieldInvalid(setup.monthlyLivingExpense, monthlyToKrw(setup.monthlyLivingExpense), 2)} aria-describedby={requiredMoneyFieldInvalid(setup.monthlyLivingExpense, monthlyToKrw(setup.monthlyLivingExpense), 2) ? "wc-form-error" : undefined} /><b>만원</b></div></label>
+                <label><span>월 부채상환액</span><div className="wc-field-with-unit"><input className={inputClassName} inputMode="decimal" min="0" step="any" placeholder="예: 90" value={setup.monthlyDebtPayment} onChange={(event) => updateSetup((current) => ({ ...current, monthlyDebtPayment: event.target.value }))} aria-invalid={requiredMoneyFieldInvalid(setup.monthlyDebtPayment, monthlyToKrw(setup.monthlyDebtPayment), 2)} aria-describedby={requiredMoneyFieldInvalid(setup.monthlyDebtPayment, monthlyToKrw(setup.monthlyDebtPayment), 2) ? "wc-form-error" : undefined} /><b>만원</b></div></label>
               </div>
-              <div className={`wc-flow-preview ${monthlyBalancePreview < 0 ? "negative" : ""}`}><span>{monthlyBalancePreview < 0 ? "월 부족액" : "월 조정 가능액"}</span><strong>{formatKrw(Math.abs(monthlyBalancePreview))}</strong><small>세후소득 − 필수생활비 − 부채상환</small></div>
+              <div className={`wc-flow-preview ${monthlyBalancePreview < 0 ? "negative" : ""}`}><span>{monthlyBalancePreview < 0 ? "입력 기준 월 부족액" : "입력 기준 월 잔여액"}</span><strong>{formatKrw(Math.abs(monthlyBalancePreview))}</strong><small>세후소득 − 필수생활비 − 부채상환 · 비정기 지출 전</small></div>
             </div>
           </section>
         ) : null}
@@ -520,25 +594,26 @@ function SetupFlow({ onCancel, onComplete }: { onCancel: () => void; onComplete:
                   ["stable", "안정적", "예측 가능한 급여·수입"],
                   ["variable", "변동 있음", "월별 편차가 큰 수입"],
                   ["uncertain", "불확실", "중단 가능성 또는 전환기"],
-                ].map(([value, label, description]) => <label key={value}><input type="radio" name="incomeStability" value={value} checked={setup.incomeStability === value} onChange={() => setSetup((current) => ({ ...current, incomeStability: value as IncomeStability }))} /><span><strong>{label}</strong><small>{description}</small></span></label>)}
+                ].map(([value, label, description]) => <label key={value}><input type="radio" name="incomeStability" value={value} checked={setup.incomeStability === value} onChange={() => updateSetup((current) => ({ ...current, incomeStability: value as IncomeStability }))} /><span><strong>{label}</strong><small>{description}</small></span></label>)}
               </div></fieldset>
               <fieldset><legend>90일 안에 예정된 큰 변화</legend><div className="wc-choice-grid five">
                 {[
                   ["none", "없음"], ["housing", "주거 이동"], ["career", "이직·휴직"], ["business", "사업 자금"], ["large_expense", "큰 지출"],
-                ].map(([value, label]) => <label key={value}><input type="radio" name="next90DayEvent" value={value} checked={setup.next90DayEvent === value} onChange={() => setSetup((current) => ({ ...current, next90DayEvent: value as Next90DayEvent, next90DayAmount: value === "none" ? "" : current.next90DayAmount }))} /><span><strong>{label}</strong></span></label>)}
+                ].map(([value, label]) => <label key={value}><input type="radio" name="next90DayEvent" value={value} checked={setup.next90DayEvent === value} onChange={() => updateSetup((current) => ({ ...current, next90DayEvent: value as Next90DayEvent, next90DayAmount: value === "none" ? "" : current.next90DayAmount }))} /><span><strong>{label}</strong></span></label>)}
               </div></fieldset>
-              {setup.next90DayEvent !== "none" ? <label className="wc-event-amount"><span><strong>90일 안에 필요한 예상 금액</strong><small>가까운 일정이 현재 현금성 자산으로 감당 가능한지 확인합니다.</small></span><div className="wc-field-with-unit"><input className={inputClassName} inputMode="decimal" min="0" step="any" placeholder="예: 3000" value={setup.next90DayAmount} onChange={(event) => setSetup((current) => ({ ...current, next90DayAmount: event.target.value }))} /><b>만원</b></div></label> : null}
-              <label className="wc-note-field"><span><strong>반드시 고려할 조건</strong><small>선택 입력 · 상품명, 계좌번호 등 개인정보는 적지 마세요.</small></span><textarea maxLength={300} rows={4} placeholder="예: 6개월 내 전세 보증금 증액 예정, 사업소득 변동이 큼" value={setup.constraintNote} onChange={(event) => setSetup((current) => ({ ...current, constraintNote: event.target.value }))} /><em>{setup.constraintNote.length} / 300</em></label>
+              {setup.next90DayEvent !== "none" ? <label className="wc-event-amount"><span><strong>90일 안에 필요한 예상 금액</strong><small>지급 뒤에도 3개월 필수유출 안전선이 남는지 확인합니다.</small></span><div className="wc-field-with-unit"><input className={inputClassName} inputMode="decimal" min="0" step="any" placeholder="예: 3000" value={setup.next90DayAmount} onChange={(event) => updateSetup((current) => ({ ...current, next90DayAmount: event.target.value }))} aria-invalid={Boolean(error && step === 3 && (setup.next90DayAmount.trim() === "" || monthlyToKrw(setup.next90DayAmount) <= 0))} aria-describedby={error && step === 3 ? "wc-form-error" : undefined} /><b>만원</b></div></label> : null}
+              <label className="wc-note-field"><span><strong>반드시 고려할 조건</strong><small>선택 입력 · 상품명, 계좌번호 등 개인정보는 적지 마세요.</small></span><textarea maxLength={300} rows={4} placeholder="예: 6개월 내 전세 보증금 증액 예정, 사업소득 변동이 큼" value={setup.constraintNote} onChange={(event) => updateSetup((current) => ({ ...current, constraintNote: event.target.value }))} /><em>{setup.constraintNote.length} / 300</em></label>
             </div>
             <div className="wc-analysis-summary"><Icon name="lock" /><div><strong>분석 전 확인</strong><p>입력한 금액은 이번 리포트 계산에만 사용하며 브라우저 저장소에 남기지 않습니다. 결과는 진단용 참고정보이며 투자·세무·법률 자문이 아닙니다.</p></div></div>
           </section>
         ) : null}
 
-        {error ? <div className="wc-error" role="alert" ref={errorRef} tabIndex={-1}>{error}</div> : null}
+        {error ? <div className="wc-error" id="wc-form-error" role="alert" ref={errorRef} tabIndex={-1}>{error}</div> : null}
         <footer className="wc-form-footer">
           {step > 1 ? <button className="wc-secondary-button" type="button" onClick={previousStep} disabled={isLoading}>이전</button> : <span />}
           {step < 3 ? <button className="wc-primary-button" type="button" onClick={nextStep}>다음 단계 <Icon name="arrow" /></button> : <button className="wc-primary-button" type="submit" disabled={isLoading}>{isLoading ? <><span className="wc-spinner" /> 구조를 분석하고 있습니다</> : <>종합 리포트 만들기 <Icon name="arrow" /></>}</button>}
         </footer>
+        </fieldset>
       </form>
     </main>
   );
@@ -547,6 +622,7 @@ function SetupFlow({ onCancel, onComplete }: { onCancel: () => void; onComplete:
 export function WealthCopyApp() {
   const [screen, setScreen] = useState<"landing" | "setup" | "report">("landing");
   const [report, setReport] = useState<WealthReport | null>(null);
+  const [setup, setSetup] = useState<SetupState>(createInitialSetup);
 
   useEffect(() => cleanupLegacyStorage(), []);
   useEffect(() => {
@@ -554,19 +630,24 @@ export function WealthCopyApp() {
   }, [screen]);
 
   function openSetup() {
-    setReport(null);
     setScreen("setup");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function startNewReport() {
+    setReport(null);
+    setSetup(createInitialSetup());
+    openSetup();
   }
 
   return (
     <div className="wc-app">
       <header className="wc-site-header">
         <button className="wc-brand-button" type="button" onClick={() => setScreen("landing")} aria-label="WealthCopy 홈"><WealthLogo /></button>
-        <div className="wc-header-meta"><span>PRIVATE BETA</span>{screen === "report" ? <button type="button" onClick={openSetup}>자산 다시 입력</button> : null}</div>
+        <div className="wc-header-meta"><span>PRIVATE BETA</span></div>
       </header>
-      {screen === "landing" ? <Landing onStart={openSetup} /> : null}
-      {screen === "setup" ? <SetupFlow onCancel={() => setScreen("landing")} onComplete={(nextReport) => { setReport(nextReport); setScreen("report"); window.scrollTo({ top: 0 }); }} /> : null}
+      {screen === "landing" ? <Landing onStart={startNewReport} /> : null}
+      {screen === "setup" ? <SetupFlow setup={setup} setSetup={setSetup} onCancel={() => setScreen("landing")} onComplete={(nextReport) => { setReport(nextReport); setScreen("report"); window.scrollTo({ top: 0 }); }} /> : null}
       {screen === "report" && report ? <WealthReportView report={report} onRestart={openSetup} /> : null}
     </div>
   );

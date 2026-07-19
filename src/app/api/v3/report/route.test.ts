@@ -194,8 +194,13 @@ describe("POST /api/v3/report", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.route.title).toContain("월 가용금액");
+    expect(body.route.title).toBe("L6→L7 구조화 전환 경로");
     expect(body.route.summary).toContain("월 현금흐름");
+    expect(body.route.stages.map((stage: { title: string }) => stage.title)).toEqual([
+      "편중 원인 확인",
+      "월 흐름 연결",
+      "L7 전환 재산정",
+    ]);
     expect(parse).toHaveBeenCalledOnce();
     const modelRequest = parse.mock.calls[0]?.[0];
     if (!modelRequest) throw new Error("Expected one OpenAI request.");
@@ -227,7 +232,7 @@ describe("POST /api/v3/report", () => {
     );
     const missingKeyBody = await missingKeyResponse.json();
     expect(missingKeyResponse.status).toBe(200);
-    expect(missingKeyBody.route.title).toContain("월 가용금액");
+    expect(missingKeyBody.route.title).toBe("L6→L7 구조화 전환 경로");
 
     const parse = vi.fn().mockResolvedValue({
       output_parsed: { framingId: "verify_then_plan" },
@@ -241,6 +246,7 @@ describe("POST /api/v3/report", () => {
     );
     const invalidBody = await invalidResponse.json();
     expect(invalidResponse.status).toBe(200);
-    expect(invalidBody.route.title).toContain("월 가용금액");
+    expect(invalidBody.route.title).toBe("L6→L7 구조화 전환 경로");
+    expect(invalidBody.route).toEqual(missingKeyBody.route);
   });
 });

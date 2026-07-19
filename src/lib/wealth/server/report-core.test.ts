@@ -132,6 +132,13 @@ describe("deterministic comprehensive report", () => {
       netWorthToAnnualIncomeMultiple: 3.3,
     });
     expect(report.priorities).toHaveLength(3);
+    expect(report.methodology.version).toBe("composition-policy-v2");
+    expect(report.route.title).toBe("L6→L7 구조화 전환 경로");
+    expect(report.route.stages.map((stage) => stage.title)).toEqual([
+      "편중 원인 확인",
+      "월 흐름 연결",
+      "L7 전환 재산정",
+    ]);
     expect(report.route.stages.map((stage) => stage.horizon)).toEqual([
       "0-3개월",
       "4-6개월",
@@ -174,8 +181,75 @@ describe("deterministic comprehensive report", () => {
         expect(report.level.next).toBe("L15");
         expect(report.level.gapKrw).toBe(0);
         expect(report.level.positionPercent).toBe(100);
+        expect(report.route.title).toBe("L15 장기운영·영속성 경로");
+        expect(report.route.title).not.toContain("L15→L15");
+        expect(report.route.stages[2]?.title).toBe("L15 운영 재점검");
+        expect(report.route.stages[2]?.description).toContain(
+          "다음 레벨을 가정하지 않고",
+        );
+        expect(JSON.stringify(report.route)).not.toMatch(/L16|상위 구간으로 이동/);
       }
     }
+  });
+
+  it("derives asset-group amount gaps from next-band gross assets with current debt held constant", () => {
+    const report = createReportContext(
+      requestWith({
+        assets: {
+          liquid: 50_000_000,
+          home: 260_000_000,
+          market: 10_000_000,
+          pension: 50_000_000,
+          incomeProperty: 30_000_000,
+          businessPrivate: 25_000_000,
+          alternatives: 15_000_000,
+          other: 10_000_000,
+        },
+      }),
+    ).fallback;
+
+    expect(report.level).toMatchObject({
+      current: "L6",
+      next: "L7",
+      targetNetWorthKrw: 500_000_000,
+    });
+    const market = report.composition.find((row) => row.key === "market");
+    expect(market).toMatchObject({
+      currentAmountKrw: 10_000_000,
+      referenceMinPercent: 18,
+      estimatedGapKrw: 89_000_000,
+    });
+    expect(report.methodology.disclaimer).toContain(
+      "현재 부채가 유지된다고 가정한 다음 구간 총자산 기준",
+    );
+  });
+
+  it("uses verification and cashflow priorities instead of composition-gap actions for a zero-asset snapshot", () => {
+    const zeroAssets = Object.fromEntries(
+      ASSET_COMPOSITION_KEYS.map((key) => [key, 0]),
+    ) as typeof stableProfile.assets;
+    const report = createReportContext(
+      requestWith({ assets: zeroAssets, totalDebtKrw: 0 }),
+    ).fallback;
+
+    expect(report.level.current).toBe("L2");
+    expect(report.dataConfidence.grade).toBe("low");
+    expect(report.composition.every((row) => row.currentAmountKrw === 0)).toBe(
+      true,
+    );
+    expect(report.priorities.some((priority) => priority.title === "0원 자산 스냅샷 재확인")).toBe(
+      true,
+    );
+    expect(
+      report.priorities.some((priority) =>
+        priority.metric.includes("다음 구간 참고 하단까지"),
+      ),
+    ).toBe(false);
+    expect(
+      report.priorities.some((priority) =>
+        priority.title.includes("기타·회수예정 자산을 세부 항목으로 분리"),
+      ),
+    ).toBe(false);
   });
 
   it("uses the next-level group at every composition-policy boundary", () => {
@@ -231,7 +305,7 @@ describe("deterministic comprehensive report", () => {
     );
 
     expect(report.allowModel).toBe(false);
-    expect(report.fallback.route.title).toContain("안전 중단조건");
+    expect(report.fallback.route.title).toContain("안전조건 우선");
     expect(
       report.fallback.risks.filter((risk) => risk.severity === "critical"),
     ).toHaveLength(4);
@@ -248,11 +322,12 @@ describe("deterministic comprehensive report", () => {
     }
     expect(report.fallback.route.stages[1]).toMatchObject({
       horizon: "4-6개월",
-      title: expect.stringContaining("재검증"),
+      title: "안전자금 분리",
     });
-    expect(report.fallback.route.stages[2]?.description).toContain(
-      "경우에만",
+    expect(report.fallback.route.stages[1]?.description).toContain(
+      "중단조건을 재평가",
     );
+    expect(report.fallback.route.stages[2]?.description).toContain("해소된 경우에만");
   });
 
   it("keeps an urgent free-text signal private while forcing safeguard framing", () => {
@@ -262,7 +337,7 @@ describe("deterministic comprehensive report", () => {
     });
 
     expect(context.allowModel).toBe(false);
-    expect(context.fallback.route.title).toContain("안전 중단조건");
+    expect(context.fallback.route.title).toContain("안전조건 우선");
     expect(context.fallback.risks.some((risk) => risk.severity === "critical")).toBe(
       true,
     );
@@ -315,25 +390,38 @@ describe("deterministic comprehensive report", () => {
       grade: "low",
     });
     expect(context.fallback.priorities[0]?.title).toContain("기타·회수예정");
-    expect(context.fallback.route.title).toContain(
-      context.fallback.priorities[0]?.title ?? "missing priority",
-    );
+    expect(context.fallback.route.title).toBe("L6→L7 구조화 전환 경로");
+    context.fallback.priorities.forEach((priority, index) => {
+      expect(context.fallback.route.stages[index]?.description).toContain(
+        priority.title,
+      );
+    });
   });
 
-  it("keeps a signed monthly balance while deployable cash stays nonnegative", () => {
-    const report = createReportContext(
+  it("turns negative monthly cashflow into a critical safeguard while deployable cash stays nonnegative", () => {
+    const context = createReportContext(
       requestWith({
         monthlyIncomeKrw: 5_000_000,
-        monthlyLivingExpenseKrw: 4_000_000,
-        monthlyDebtPaymentKrw: 2_000_000,
+        monthlyLivingExpenseKrw: 5_500_000,
+        monthlyDebtPaymentKrw: 500_000,
       }),
-    ).fallback;
+    );
+    const report = context.fallback;
 
     expect(report.cashflow.monthlyBalanceKrw).toBe(-1_000_000);
     expect(report.cashflow.monthlyDeployableKrw).toBe(0);
+    expect(context.allowModel).toBe(false);
+    expect(context.allowedFramingIds).toEqual(["protect_then_build"]);
+    expect(
+      report.risks.some(
+        (risk) =>
+          risk.severity === "critical" && risk.title.includes("월 현금흐름이 적자"),
+      ),
+    ).toBe(true);
     expect(report.priorities.some((priority) => priority.title.includes("월 부족액"))).toBe(
       true,
     );
+    expect(report.route.title).toContain("안전조건 우선");
   });
 
   it("uses living expenses plus debt payments for liquid runway", () => {
@@ -410,6 +498,44 @@ describe("deterministic comprehensive report", () => {
     expect(
       context.fallback.risks.some(
         (risk) => risk.severity === "critical" && risk.title.includes("90일"),
+      ),
+    ).toBe(true);
+  });
+
+  it("treats the event amount plus exactly three months of required outflow as the 90-day coverage boundary", () => {
+    const exactlyCovered = createReportContext(
+      requestWith({
+        next90DayEvent: "housing",
+        next90DayAmountKrw: 35_000_000,
+      }),
+    );
+    expect(exactlyCovered.modelInput.signals.nearTermCoverage).toBe("covered");
+    expect(
+      exactlyCovered.fallback.risks.some(
+        (risk) => risk.severity === "critical" && risk.title.includes("90일"),
+      ),
+    ).toBe(false);
+    expect(exactlyCovered.fallback.risks.some((risk) => risk.description.includes("1,500만원"))).toBe(
+      true,
+    );
+
+    const oneWonShort = createReportContext(
+      requestWith({
+        next90DayEvent: "housing",
+        next90DayAmountKrw: 35_000_001,
+      }),
+    );
+    expect(oneWonShort.modelInput.signals.nearTermCoverage).toBe("shortfall");
+    expect(oneWonShort.allowedFramingIds).toEqual(["protect_then_build"]);
+    expect(oneWonShort.fallback.priorities[0]).toMatchObject({
+      title: expect.stringContaining("뒤 안전선 보완"),
+      metric: "이벤트 후 안전선 부족 1원",
+    });
+    expect(
+      oneWonShort.fallback.risks.some(
+        (risk) =>
+          risk.severity === "critical" &&
+          risk.title.includes("뒤 3개월 안전선이 부족"),
       ),
     ).toBe(true);
   });
@@ -536,12 +662,16 @@ describe("deterministic comprehensive report", () => {
     const selected = mergeReportFraming(context, {
       framingId: "cashflow_then_gap",
     });
-    expect(selected.route.title).toContain(
-      selected.priorities[0]?.title ?? "missing priority",
-    );
-    expect(selected.route.stages[0]?.title).toBe(
-      selected.priorities[0]?.title,
-    );
+    expect(selected.route.title).toBe("L6→L7 구조화 전환 경로");
+    expect(selected.route.summary).toContain("월 현금흐름");
+    expect(selected.route.stages.map((stage) => stage.title)).toEqual([
+      "편중 원인 확인",
+      "월 흐름 연결",
+      "L7 전환 재산정",
+    ]);
+    selected.priorities.forEach((priority, index) => {
+      expect(selected.route.stages[index]?.description).toContain(priority.title);
+    });
     expect(
       mergeReportFraming(context, { framingId: "verify_then_plan" }),
     ).toEqual(context.fallback);

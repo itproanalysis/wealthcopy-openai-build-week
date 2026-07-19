@@ -297,7 +297,7 @@ export const COMPOSITION_METHODOLOGY = {
   label: "WealthCopy 내부 참고범위",
   version: WEALTH_REPORT_METHODOLOGY_VERSION,
   disclaimer:
-    "다음 구간의 내부 운영 기준을 비교하기 위한 참고범위입니다. 특정 집단의 관찰 평균, 통계적 백분위, 기대수익률 또는 상품·거래·투자 추천이 아닙니다. 금액 격차는 현재 총자산을 기준으로 한 구조 진단용 추정치이며 실제 매수·매도 금액을 뜻하지 않습니다.",
+    "다음 구간의 내부 운영 기준을 비교하기 위한 참고범위입니다. 특정 집단의 관찰 평균, 통계적 백분위, 기대수익률 또는 상품·거래·투자 추천이 아닙니다. 자산군별 금액 차이는 현재 부채가 유지된다고 가정한 다음 구간 총자산 기준의 진단용 추정치이며 실제 매수·매도 금액을 뜻하지 않습니다.",
 } as const;
 
 export function levelCompositionBenchmark(level: AssetLevel) {

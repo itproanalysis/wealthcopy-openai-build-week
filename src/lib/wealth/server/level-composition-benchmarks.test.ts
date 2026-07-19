@@ -126,8 +126,15 @@ describe("L1-L15 composition reference policy", () => {
 
   it("keeps source identity and raw currency semantics out of public methodology", () => {
     expect(COMPOSITION_METHODOLOGY.label).toBe("WealthCopy 내부 참고범위");
+    expect(COMPOSITION_METHODOLOGY.version).toBe("composition-policy-v2");
     expect(COMPOSITION_METHODOLOGY.disclaimer).toMatch(
       /관찰 평균.*아닙니다|투자 추천이 아닙니다/,
+    );
+    expect(COMPOSITION_METHODOLOGY.disclaimer).toContain(
+      "현재 부채가 유지된다고 가정한 다음 구간 총자산 기준",
+    );
+    expect(COMPOSITION_METHODOLOGY.disclaimer).toContain(
+      "실제 매수·매도 금액을 뜻하지 않습니다",
     );
 
     const publicMethodology = JSON.stringify(COMPOSITION_METHODOLOGY);

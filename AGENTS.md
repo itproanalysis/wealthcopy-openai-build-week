@@ -19,7 +19,7 @@ Turn a household snapshot into a concise wealth-structure report: current L1–L
 
 - `krw-net-worth-v1` in `src/lib/wealth/server/asset-level-policy.ts` owns L1–L15 thresholds.
 - Net worth is the sum of all eight asset groups minus total debt.
-- `composition-policy-v1` is a WealthCopy-owned comparison policy, not financial advice.
+- `composition-policy-v2` is a WealthCopy-owned comparison policy, not financial advice. Asset-group amount gaps use the next-band gross-asset reference while holding current debt constant.
 - A methodology change requires a new version, boundary tests and an explicit storage/API compatibility decision.
 - PSID may influence only `server-only` percentile-spacing calibration for the fifteen internal composition policies. Never convert or expose its dollar values, source terminology or inferred rank through client code, request schemas, model input, public responses, storage, logs or product copy.
 
