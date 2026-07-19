@@ -1,46 +1,31 @@
 # WealthCopy GCP deployment
 
-## Current deployment
+## Service
 
 | Item | Value |
 | --- | --- |
 | Public URL | `https://wealth-copy-470320899177.asia-northeast3.run.app` |
 | Project | `abis-web-platform` |
-| Region | `asia-northeast3` (Seoul) |
+| Region | `asia-northeast3` |
 | Cloud Run service | `wealth-copy` |
-| Initial revision | `wealth-copy-00001-lkh` |
-| Current verified revision | `wealth-copy-00005-crx` (2026-07-16 monthly operating-loop release) |
 | Runtime identity | `wealth-copy-run@abis-web-platform.iam.gserviceaccount.com` |
 | Secret | `wealth-copy-openai-api-key` |
 | Model environment | `OPENAI_MODEL=gpt-5.6-luna` |
 | Resources | 1 CPU, 512 MiB, concurrency 20, timeout 30 seconds |
 | Scaling | minimum 0, maximum 3 instances |
-| Uptime check | `WealthCopy production health`, HTTPS `/api/healthz`, every 5 minutes |
 
-The service is public for the Build Week demo. Cloud Run terminates TLS and injects `PORT=8080`. The container listens on `0.0.0.0`, runs as a non-root user and receives the OpenAI key only when an instance starts.
+Cloud Run terminates TLS and injects `PORT=8080`. The final container runs as a non-root user and receives the API key only at instance startup.
 
-## Source and secret boundary
-
-- `next.config.ts` produces the Next.js standalone server.
-- `Dockerfile` builds with Node.js 24 and copies only the standalone runtime and static chunks into the final image.
-- `.dockerignore` and `.gcloudignore` exclude `.env*`, except the empty `.env.example`, as well as `기획서/`, `.git/`, `node_modules/` and `.next/`.
-- Verify the upload manifest before every deployment:
-
-```powershell
-gcloud.cmd meta list-files-for-upload
-```
-
-The output must not contain `.env.local` or `기획서/`. Never pass `OPENAI_API_KEY` through a Docker build argument, plain environment flag or committed file.
-
-## Deploy a new revision
-
-Run the quality gate first:
+## Pre-deploy gate
 
 ```powershell
 pnpm.cmd check
+gcloud.cmd meta list-files-for-upload
 ```
 
-Deploy from the repository root. Replace the secret version after rotation; do not switch to `latest` without an intentional revision update.
+The upload manifest must exclude `.env.local`, `.git/`, `node_modules/`, `.next/` and the user-owned planning directory. Never pass a secret through a Docker build argument or plain environment value.
+
+## Deploy
 
 ```powershell
 gcloud.cmd run deploy wealth-copy `
@@ -65,20 +50,6 @@ gcloud.cmd run deploy wealth-copy `
   --quiet
 ```
 
-Cloud Build uses the repository `Dockerfile` and stores the image in the regional `cloud-run-source-deploy` Artifact Registry repository. A successful deployment creates a new immutable revision and routes 100% of traffic to it.
-
-## Rotate the OpenAI key
-
-Add a new Secret Manager version from a local file that contains only the key. Delete that temporary file immediately afterward.
-
-```powershell
-gcloud.cmd secrets versions add wealth-copy-openai-api-key `
-  --project=abis-web-platform `
-  --data-file=<temporary-key-file>
-```
-
-Deploy again with `OPENAI_API_KEY=wealth-copy-openai-api-key:<new-version>`. Disable an old version only after the new revision passes verification. Secret values must never appear in shell history, logs or documentation.
-
 ## Verify
 
 ```powershell
@@ -91,9 +62,17 @@ Invoke-WebRequest $url -UseBasicParsing
 Invoke-WebRequest "$url/api/healthz" -Method Head -UseBasicParsing
 ```
 
-For `POST /api/v2/plan`, verify HTTP 200, exactly `nextLevel`, `actions`, `progress`, three actions, `X-WealthCopy-Source-Level` and `Cache-Control: no-store`. Test `L14 → L15` separately from `L15 → L15` maintenance without using real customer data. Also verify that `text/plain`, foreign-origin, compressed and over-8KiB requests are rejected before model access. `/api/healthz` must return 200 with `Cache-Control: no-store` and no internal dependency details.
+For `POST /api/v3/report`, verify:
 
-Read recent service errors:
+- HTTP 200 and `Cache-Control: no-store`
+- exactly eight composition rows
+- current/next level and threshold gap at L1, L14 and L15 boundaries
+- three ranked priorities and three route horizons
+- deterministic safety-stop and model-fallback parity
+- rejection of non-JSON, foreign-origin, compressed, extra-field and over-8-KiB requests
+- the removed v2 endpoint returns 404
+
+Review recent errors:
 
 ```powershell
 gcloud.cmd logging read `
@@ -102,18 +81,7 @@ gcloud.cmd logging read `
   --freshness=30m
 ```
 
-Confirm the external health check configuration:
-
-```powershell
-gcloud.cmd monitoring uptime list-configs `
-  --project=abis-web-platform
-```
-
-The verified check resource is `wealthcopy-production-health-iqC5B6EElH8`. Cloud Monitoring must remain enabled for the project.
-
 ## Roll back
-
-List revisions and route traffic to the last known-good revision:
 
 ```powershell
 gcloud.cmd run revisions list `
@@ -129,9 +97,7 @@ gcloud.cmd run services update-traffic wealth-copy `
 
 ## Production follow-ups
 
-- Replace the in-memory IP/session limiter with an authenticated distributed limiter.
-- Add budget alerts and an alert notification channel before production traffic; the health endpoint and five-minute uptime check exist, but they do not yet page an operator.
-- Define retention, deletion and incident-response policies before storing any customer-derived cohort data.
-- Review accessibility, privacy and financial-domain obligations before expanding beyond the demo.
-
-Official references: [deploying Next.js to Cloud Run](https://docs.cloud.google.com/run/docs/quickstarts/frameworks/deploy-nextjs-service), [Cloud Run container contract](https://docs.cloud.google.com/run/docs/container-contract), [Cloud Run secrets](https://docs.cloud.google.com/run/docs/configuring/services/secrets).
+- Replace the in-memory limiter with authenticated distributed limiting.
+- Add budget and incident alert channels.
+- Complete privacy, retention, deletion, accessibility and financial/legal review.
+- Do not persist customer financial snapshots until those controls exist.

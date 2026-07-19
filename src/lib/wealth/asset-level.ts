@@ -1,31 +1,17 @@
 import { z } from "zod";
 
 export const ASSET_LEVELS = [
-  "L1",
-  "L2",
-  "L3",
-  "L4",
-  "L5",
-  "L6",
-  "L7",
-  "L8",
-  "L9",
-  "L10",
-  "L11",
-  "L12",
-  "L13",
-  "L14",
-  "L15",
+  "L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8",
+  "L9", "L10", "L11", "L12", "L13", "L14", "L15",
 ] as const;
 
 export const assetLevelSchema = z.enum(ASSET_LEVELS);
-
 export type AssetLevel = z.infer<typeof assetLevelSchema>;
 
 export const WEALTH_SOURCE_LEVEL_HEADER = "X-WealthCopy-Source-Level";
 
 export const ASSET_LEVEL_LABELS = {
-  L1: "재무 회복",
+  L1: "회복 구간",
   L2: "기반 시작",
   L3: "현금흐름 정리",
   L4: "안전망 구축",
@@ -43,21 +29,10 @@ export const ASSET_LEVEL_LABELS = {
 } as const satisfies Record<AssetLevel, string>;
 
 export const NEXT_ASSET_LEVELS = [
-  "L2",
-  "L3",
-  "L4",
-  "L5",
-  "L6",
-  "L7",
-  "L8",
-  "L9",
-  "L10",
-  "L11",
-  "L12",
-  "L13",
-  "L14",
-  "L15",
+  "L2", "L3", "L4", "L5", "L6", "L7", "L8",
+  "L9", "L10", "L11", "L12", "L13", "L14", "L15",
 ] as const;
+
 export const nextAssetLevelSchema = z.enum(NEXT_ASSET_LEVELS);
 export type NextAssetLevel = z.infer<typeof nextAssetLevelSchema>;
 

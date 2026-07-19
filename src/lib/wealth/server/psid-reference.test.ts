@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { PSID_WEALTH_REFERENCE_2019 } from "./psid-reference";
+vi.mock("server-only", () => ({}));
 
-describe("PSID public wealth reference", () => {
+import {
+  PSID_DISTRIBUTION_SHAPE_PERCENTILES_2019,
+  PSID_WEALTH_REFERENCE_2019,
+} from "./psid-reference";
+
+describe("PSID internal source-audit reference", () => {
   it("records a monotonic published aggregate table without raw microdata", () => {
     const points = PSID_WEALTH_REFERENCE_2019.percentilePoints;
 
@@ -36,5 +41,22 @@ describe("PSID public wealth reference", () => {
       const previous = points[index - 1];
       return !previous || point.netWorthUsd > previous.netWorthUsd;
     })).toBe(true);
+  });
+
+  it("exposes only percentile coordinates to distribution-shape calibration", () => {
+    expect(PSID_DISTRIBUTION_SHAPE_PERCENTILES_2019).toEqual(
+      PSID_WEALTH_REFERENCE_2019.percentilePoints.map(
+        ({ percentile }) => percentile,
+      ),
+    );
+    expect(
+      PSID_DISTRIBUTION_SHAPE_PERCENTILES_2019.every(
+        (percentile, index, anchors) =>
+          index === 0 || percentile > (anchors[index - 1] ?? -Infinity),
+      ),
+    ).toBe(true);
+    expect(
+      JSON.stringify(PSID_DISTRIBUTION_SHAPE_PERCENTILES_2019),
+    ).not.toContain("netWorthUsd");
   });
 });

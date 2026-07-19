@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Noto_Sans_KR } from "next/font/google";
+
 import "./globals.css";
 
 const notoSansKr = Noto_Sans_KR({
@@ -9,16 +10,12 @@ const notoSansKr = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: "WealthCopy | 분석보다 행동",
+  title: "WealthCopy | 다음 자산구간 구조 리포트",
   description:
-    "다음 자산 단계와 이번 달에 완료할 세 가지 행동만 보여주는 교육용 자산관리 실행 서비스.",
+    "내 자산구성과 다음 구간의 참고구성을 비교하고, 순자산 격차와 우선 조정 영역을 한 번에 확인합니다.",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ko">
       <body className={notoSansKr.variable}>{children}</body>

@@ -1,14 +1,16 @@
+import "server-only";
+
 type PsidWealthPercentilePoint = {
   percentile: 5 | 10 | 25 | 50 | 75 | 90 | 95;
   netWorthUsd: number;
 };
 
 /**
- * Audit-only source values from the published PSID/SCF comparison table.
+ * Internal source-audit values from the published PSID/SCF comparison table.
  *
- * These dollar values never enter the model input, public API, or client bundle.
- * WealthCopy uses only the published percentile cut structure (25/50/75/90)
- * so the user-facing concept remains currency neutral.
+ * This module is backend reference data only. Its values and terminology must
+ * never enter a request schema, model input, public report, storage record, or
+ * client bundle.
  */
 export const PSID_WEALTH_REFERENCE_2019 = {
   referenceVersion: "psid-wealth-reference-v2",
@@ -40,3 +42,18 @@ export const PSID_WEALTH_REFERENCE_2019 = {
     { percentile: 95, netWorthUsd: 1_660_000 },
   ] satisfies readonly PsidWealthPercentilePoint[],
 } as const;
+
+/**
+ * Percentile coordinates are the only part of the external reference that may
+ * shape WealthCopy's internal level calibration. They describe spacing in a
+ * published distribution; they are not a currency conversion, a Korean wealth
+ * rank, or an input to level classification.
+ *
+ * Keep this export in this `server-only` module. Public report code must never
+ * receive the source name, the published currency values, or these anchors.
+ */
+export const PSID_DISTRIBUTION_SHAPE_PERCENTILES_2019 = Object.freeze(
+  PSID_WEALTH_REFERENCE_2019.percentilePoints.map(
+    ({ percentile }) => percentile,
+  ),
+);

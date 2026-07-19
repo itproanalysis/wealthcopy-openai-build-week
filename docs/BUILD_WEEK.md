@@ -1,108 +1,46 @@
-# OpenAI Build Week 2026 checklist
+# OpenAI Build Week 2026 verification
 
-Verified on 2026-07-14 KST against the official event site, Devpost rules, FAQ, resources, and GPT-5.6 guide.
+## Product acceptance
 
-## Non-negotiables
+- [ ] The setup collects all eight asset groups without connected-account claims.
+- [ ] The report shows current L1–L15 band, next band, threshold gap and in-band position.
+- [ ] L15 is presented as a terminal operating band.
+- [ ] Every composition row shows current share, internal reference range, direction and estimated gap.
+- [ ] Cashflow covers deployable amount, living-cost ratio, debt-service ratio, liquid runway and debt-to-asset ratio.
+- [ ] Critical safeguards appear before structural guidance.
+- [ ] The report contains three ranked priorities with diagnosis, guidance, metric, checkpoint and guardrail.
+- [ ] The route contains 0–3, 4–6 and 7–12 month horizons.
+- [ ] Data confidence is visible and uncertain holdings reduce confidence.
+- [ ] No completion tracker, behavior history, product recommendation or automatic-promotion claim remains.
 
-- Build the project with Codex.
-- Use GPT-5.6 meaningfully in a core product workflow. Incidental or decorative use is not enough.
-- Select one track: Apps for Your Life, Work & Productivity, Developer Tools, or Education.
-- Submit by 2026-07-21 17:00 PDT, which is 2026-07-22 09:00 KST.
+## API and privacy
 
-The event's 100 USD credit is for Codex, not OpenAI API usage. Budget GPT-5.6 API usage separately.
+- [ ] `POST /api/v3/report` accepts only the strict report request.
+- [ ] `/api/v2/plan` is absent.
+- [ ] JSON type, origin, encoding and 8 KiB gates reject invalid requests before model access.
+- [ ] Every API response uses `Cache-Control: no-store`.
+- [ ] Financial inputs and reports are not persisted in the browser.
+- [ ] Deprecated local plan and behavior-history keys are removed.
+- [ ] Exact amounts, ratios, levels, raw notes and public prose are absent from model input.
+- [ ] Missing key, rate limit, API error and invalid model output return the deterministic report shape.
 
-## Product acceptance gate
+## Technical verification
 
-- [x] The current snapshot is a manual three-step flow: household assets, asset structure, and execution conditions. It does not claim account linking or MyData authentication.
-- [x] Household net worth is calculated as total household assets minus total household debt.
-- [x] `krw-net-worth-v1` classifies every inclusive lower boundary from negative net worth at `L1` through KRW 1 trillion or more at `L15`.
-- [x] The bands are WealthCopy product policy, never official grades, Korean percentiles, suitability classifications, or performance forecasts.
-- [x] `behavior-policy-v2` matches one of eight purpose paths from coarse cash, debt, income, concentration, liquidity, asset-structure, and near-term-event signals.
-- [x] Every source level has one reviewed first-cycle advance anchor, one level-group operating anchor for later cycles, and reviewed protect/evidence candidates: `L1 → L2` through `L14 → L15`, plus `L15 → L15` maintenance.
-- [x] Every public plan is ordered `protect → advance → verify`.
-- [x] Every action has reviewed static copy for a concrete outcome, binary done criterion, and exactly three execution steps, plus a checklist-copy interaction.
-- [x] When no hard stop forces the protect action, `gpt-5.6-luna` chooses exactly one `supportActionId` from safe candidates; it cannot change the server-selected anchor or evidence action.
-- [x] The successful JSON body remains exactly `{nextLevel, actions, progress}` and each action remains exactly `{id, completed}`.
-- [x] `X-WealthCopy-Source-Level` carries the server-derived source level outside the JSON body, and all API responses use `Cache-Control: no-store`.
-- [x] Exact household amounts are reduced at the private request boundary to a level and coarse leverage band, then excluded from OpenAI input, response bodies, localStorage, analytics, and logs.
-- [x] `psid-wealth-reference-v2` records the PSID 2019 Table 4 source and is excluded from level classification, purpose paths, action selection, and model input.
-- [x] `3/3 · 100%` means action completion only and never causes automatic promotion.
-- [x] Month rollover discards the stale plan and requires a fresh three-step household snapshot.
-- [x] The `wealthcopy-public-plan-v5` record is exactly `{version, monthKey, sourceLevel, plan}` with `version: 5`; older plan records are discarded rather than migrated.
-- [x] The separate completion history stores only policy version and at most 36 action-ID/source-level/completion-month tuples; it rotates repeated work without entering model input or public output.
-- [x] The anonymous session UUID uses the separate `wealthcopy-anonymous-session` localStorage key and is not financial profile data.
-- [x] The public API rejects non-JSON, cross-site, compressed and over-8KB requests before model work, applies security headers, and exposes a no-store health endpoint.
-- [x] The production standalone container is deployed publicly to Cloud Run in Seoul with a dedicated runtime identity and a version-pinned Secret Manager key.
+- [ ] Lint passes with zero warnings.
+- [ ] Typecheck passes.
+- [ ] Unit and route tests pass.
+- [ ] Production build passes.
+- [ ] Tests cover all 15 levels and all eight composition groups.
+- [ ] Threshold, arithmetic, zero-denominator and maximum-value edges are covered.
+- [ ] Mobile, keyboard, focus, contrast and reduced-motion checks pass.
+- [ ] Live Cloud Run root, `/api/healthz` and `/api/v3/report` pass smoke tests.
+- [ ] Live error logs contain no new application errors.
 
-## Evidence to capture while building
+## Submission evidence
 
-- [x] Dated Git commits showing work completed during the challenge
-- [x] Product and architecture decisions in `docs/DECISIONS.md`
-- [x] Representative prompts, eval cases, and sample data
-- [ ] Screenshots or recordings of important milestones
-- [ ] A representative Codex task Session ID obtained with `/feedback`
-
-Representative Codex Session ID: TODO
-
-## Submission package
-
-- [x] Working project
-- [x] Public Cloud Run deployment: https://wealth-copy-470320899177.asia-northeast3.run.app
-- [ ] One selected category and a short English description
-- [ ] Public YouTube demo with audio; target 2:59 or less
-- [ ] Demo explains the product, Codex development process, and GPT-5.6 integration
-- [ ] Demo shows the three-step manual snapshot and clearly says it is self-reported, not connected-account data
-- [ ] Demo shows a normal transition such as `L7 → L8` and `L15 → L15` maintenance at KRW 1 trillion or more
-- [ ] Demo shows three ordered stages, expands one action's outcome/done criterion/three steps, and copies its checklist
-- [ ] Demo shows `3/3 → fresh snapshot → reclassification` without claiming automatic wealth attainment
-- [ ] Demo keeps the public surface to the next level, exactly three actions, and action-completion progress
-- [ ] Demo describes PSID bands as optional US aggregate references excluded from level, paths, actions, and model input
-- [ ] Demo explains that exact amounts are removed before GPT-5.6, the success JSON, localStorage, analytics, or logs
-- [ ] Demo explains that GPT-5.6 chooses only one safe support action while server policy fixes the advance and verify actions
-- [ ] Demo shows that a completed first-cycle rule becomes a concrete operating action on the next eligible monthly cycle
-- [ ] Demo or technical appendix verifies the exact three-key JSON body, source-level response header, no-store behavior, and v5 storage shape
-- [ ] Code repository URL
-- [ ] README covers setup, running, testing, sample data, privacy boundaries, action-policy v2, and the full `L1`–`L15` threshold table
-- [ ] README covers Codex collaboration, key decisions, and GPT-5.6's contribution
-- [ ] Public repository includes an appropriate license, or private repository access is shared with the required judges
-- [ ] Representative `/feedback` Session ID is included
-- [ ] If the project is a plugin or developer tool: supported platforms, installation, and a no-rebuild demo or sandbox are included
-
-For a private repository, the current rules require sharing access with `testing@devpost.com` and `build-week-event@openai.com`.
-
-## Final technical verification
-
-- [x] `pnpm.cmd lint`
-- [x] `pnpm.cmd typecheck`
-- [x] `pnpm.cmd test`
-- [x] `pnpm.cmd build`
-- [x] Boundary tests cover every threshold, each value immediately below a threshold, negative net worth, debt subtraction, and the exact KRW 1 trillion L15 boundary
-- [x] Path tests cover all eight purpose paths and prove that PSID never changes their scores or winner
-- [x] Planning tests cover hard stops, all 15 `protect → advance → verify` transitions, support/evidence rotation, and the four level-group operating anchors
-- [x] Model-boundary tests prove that only a safe `supportActionId` can change and that amount, level, ratio, note text, PSID values, and recent-completion history are absent
-- [x] API tests assert the exact success body keys, exact action keys, source-level header, `Cache-Control: no-store`, consistent fallback shape, same-origin/content-type gates, and bounded-body rejection
-- [x] Storage tests assert the exact v5 plan record, strict minimal action history, deletion of incompatible older records, same-month completion carry rules, and mandatory month-rollover reclassification
-- [x] Privacy tests assert that exact amounts are absent after the private classification/derivation boundary
-- [x] A manual mobile and keyboard pass confirms 44px targets, native checkboxes, dialog focus handling, visible progress text, action-detail disclosure, checklist-copy feedback, and polite live announcements
-
-## Judging lens
-
-The first stage is pass/fail for challenge fit and required technology. The scored stage weights these equally:
-
-1. Technical implementation
-2. Design, polish, and complete user experience
-3. Potential impact
-4. Quality of the idea
-
-WealthCopy's competitive claim should stay precise: it converts asset management from an analysis workflow into a monthly action workflow. The server privately classifies the level and bottleneck, the model makes one bounded support-action choice, and the public surface exposes only a next level, three executable actions, and completion progress. It does not claim that completing actions causes wealth growth.
-
-## Official sources
-
-- Event: https://openai.com/build-week/
-- Rules: https://openai.devpost.com/rules
-- FAQ: https://openai.devpost.com/details/faqs
-- Resources: https://openai.devpost.com/resources
-- Submission update: https://openai.devpost.com/updates/45282-openai-build-week-submissions-are-open-plugin-launch
-- GPT-5.6 model guide: https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6
-
-Recheck Devpost before submission because event details can change. If event pages conflict, use the Devpost rules for submission decisions.
+- [ ] Desktop and mobile report screenshots
+- [ ] A 90-second flow from input to report
+- [ ] One safety-stop scenario
+- [ ] One model-backed framing scenario and fallback parity proof
+- [ ] L1, L14 and L15 boundary evidence
+- [ ] Live URL, revision, commit and test summary

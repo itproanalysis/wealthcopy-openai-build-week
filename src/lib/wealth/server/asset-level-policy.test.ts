@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ASSET_LEVEL_MINIMUM_NET_WORTH_KRW,
   ASSET_LEVEL_POLICY_VERSION,
   classifyAssetLevel,
+  minimumNetWorthForLevel,
+  targetNetWorthForLevel,
 } from "./asset-level-policy";
 
 describe("server asset-level policy", () => {
@@ -69,5 +72,21 @@ describe("server asset-level policy", () => {
     ]) {
       expect(() => classifyAssetLevel(input)).toThrow(RangeError);
     }
+  });
+
+  it("exposes the same thresholds for report gap calculations", () => {
+    expect(minimumNetWorthForLevel("L1")).toBeNull();
+    expect(minimumNetWorthForLevel("L6")).toBe(300_000_000);
+    expect(targetNetWorthForLevel("L6")).toEqual({
+      nextLevel: "L7",
+      targetNetWorthKrw: 500_000_000,
+    });
+    expect(targetNetWorthForLevel("L15")).toEqual({
+      nextLevel: "L15",
+      targetNetWorthKrw: 1_000_000_000_000,
+    });
+    expect(ASSET_LEVEL_MINIMUM_NET_WORTH_KRW.L15).toBe(
+      1_000_000_000_000,
+    );
   });
 });
