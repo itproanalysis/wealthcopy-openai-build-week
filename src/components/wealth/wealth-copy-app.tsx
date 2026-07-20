@@ -83,8 +83,8 @@ const ASSET_META: Record<
   home: {
     label: "거주용 자산",
     labelEn: "Primary residence",
-    description: "실거주 주택, 임차보증금",
-    descriptionEn: "Home equity and rental deposit",
+    description: "실거주 주택의 현재 추정가액, 임차보증금(부채 차감 전)",
+    descriptionEn: "Current home value and refundable rental deposit, before debt",
     index: "02",
   },
   market: {
@@ -104,15 +104,15 @@ const ASSET_META: Record<
   incomeProperty: {
     label: "수익형 부동산",
     labelEn: "Income property",
-    description: "임대주택, 상가, 토지, 부동산 지분",
-    descriptionEn: "Rental property, land and property interests",
+    description: "임대주택, 상가, 토지, 부동산 지분의 현재 추정가액(부채 차감 전)",
+    descriptionEn: "Current value of rental property, land and property interests, before debt",
     index: "05",
   },
   businessPrivate: {
     label: "사업·비상장지분",
     labelEn: "Business & private equity",
-    description: "본인 사업체, 비상장주식, 사모지분",
-    descriptionEn: "Owner business and unlisted holdings",
+    description: "본인 사업체, 비상장주식, 사모지분의 현재 추정가액(부채 차감 전)",
+    descriptionEn: "Current value of owner business and unlisted holdings, before debt",
     index: "06",
   },
   alternatives: {
@@ -639,7 +639,7 @@ function SetupFlow({
         {step === 1 ? (
           <section>
             <header className="wc-form-header">
-              <div><span>STEP 01</span><h1 ref={stepHeadingRef} tabIndex={-1}>{ui(language, "우리 가구의 자산을 구성별로 나눠 주세요.", "Split household assets into eight distinct roles.")}</h1><p>{ui(language, "본인과 배우자의 공동·개별 명의 자산을 모두 포함해 주세요. 모든 금액은 오늘 또는 같은 최근 월말을 평가기준일로 맞추고, 중복 없이 가장 가까운 항목 하나에 넣어 주세요. 보유하지 않은 항목은 0으로 확인해 주세요.", "Include jointly and individually owned household assets. Use one consistent valuation date, place each amount in its closest single group, and confirm absent items with 0.")}</p></div>
+              <div><span>STEP 01</span><h1 ref={stepHeadingRef} tabIndex={-1}>{ui(language, "우리 가구의 자산을 구성별로 나눠 주세요.", "Split household assets into eight distinct roles.")}</h1><p>{ui(language, "본인과 배우자의 공동·개별 명의 자산을 모두 포함해 주세요. 자산은 관련 부채를 차감하기 전 현재 추정가액으로, 모든 금액은 오늘 또는 같은 최근 월말 기준으로 입력합니다. 중복 없이 가장 가까운 항목 하나에 넣고 보유하지 않은 항목은 0으로 확인해 주세요.", "Include jointly and individually owned household assets at current estimated value before deducting related debt. Use one consistent valuation date, place each amount in its closest single group, and confirm absent items with 0.")}</p></div>
               <UnitSwitch language={language} unit={setup.assetUnit} onChange={switchAssetUnit} />
             </header>
             <div className="wc-assets-grid">
@@ -665,7 +665,7 @@ function SetupFlow({
           <section>
             <header className="wc-form-header"><div><span>STEP 02</span><h1 ref={stepHeadingRef} tabIndex={-1}>{ui(language, "우리 가구의 부채와 한 달 흐름을 알려 주세요.", "Add household debt and one month of cashflow.")}</h1><p>{ui(language, "1단계와 동일하게 본인과 배우자를 포함한 가구 기준으로 입력해 주세요. 순자산 격차와 유동성·상환부담을 같은 기준으로 진단하며, 해당 금액이 없으면 0을 입력합니다.", "Use the same household boundary as step 1. These fields let the report calculate net worth, liquidity and repayment load on one basis. Enter 0 when none applies.")}</p></div></header>
             <div className="wc-form-section">
-              <div className="wc-section-title"><span>01</span><div><h2>{ui(language, "현재 부채", "Current debt")}</h2><p>{ui(language, "본인·배우자 명의의 주택담보, 신용, 사업자 대출 등 현재 남은 원금을 합산합니다.", "Add remaining principal across household mortgages, consumer debt and business loans.")}</p></div></div>
+              <div className="wc-section-title"><span>01</span><div><h2>{ui(language, "현재 부채", "Current debt")}</h2><p>{ui(language, "1단계 자산에서 차감하지 않은 본인·배우자 명의의 주택담보, 신용, 사업자 대출 등 현재 남은 원금을 한 번만 합산합니다.", "Add remaining principal across household mortgages, consumer debt and business loans once; do not also subtract it from the asset values in step 1.")}</p></div></div>
               <label className="wc-field-row"><span><strong>{ui(language, "총 부채", "Total debt")}</strong><small>{ui(language, "현재 남은 원금 합계", "Remaining principal")}</small></span><span className="wc-field-with-unit"><input className={inputClassName} inputMode="decimal" min="0" step="any" placeholder="0" value={setup.totalDebt} onChange={(event) => updateSetup((current) => ({ ...current, totalDebt: event.target.value }))} aria-invalid={requiredMoneyFieldInvalid(setup.totalDebt, amountToKrw(setup.totalDebt, setup.assetUnit), 2)} aria-describedby={requiredMoneyFieldInvalid(setup.totalDebt, amountToKrw(setup.totalDebt, setup.assetUnit), 2) ? "wc-form-error" : undefined} /><b>{setup.assetUnit === "eok" ? ui(language, "억원", "₩100M") : ui(language, "만원", "₩10K")}</b></span></label>
             </div>
             <div className="wc-form-section">

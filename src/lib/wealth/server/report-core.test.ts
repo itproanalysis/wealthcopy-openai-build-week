@@ -557,6 +557,10 @@ describe("deterministic comprehensive report", () => {
       }),
     ).fallback;
     expect(report.priorities[0]?.title).toContain("90일");
+    expect(report.route.stages[0]?.title).toBe(report.priorities[0]?.title);
+    expect(report.route.stages[0]?.description).toContain(
+      "90일 일정의 금액·지급일·지급 뒤 3개월 안전선",
+    );
 
     const noEvent = createReportContext(requestWith()).fallback;
     expect(
@@ -566,6 +570,29 @@ describe("deterministic comprehensive report", () => {
           priority.title.includes("가까운 자금"),
       ),
     ).toBe(false);
+  });
+
+  it("marks upper-band comparison as provisional without ownership and governance inputs", () => {
+    const report = createReportContext(
+      requestWith({
+        assets: {
+          liquid: 6_000_000_000,
+          home: 0,
+          market: 0,
+          pension: 0,
+          incomeProperty: 0,
+          businessPrivate: 0,
+          alternatives: 0,
+          other: 0,
+        },
+        totalDebtKrw: 0,
+      }),
+    ).fallback;
+
+    expect(report.level.current).toBe("L10");
+    expect(report.dataConfidence).toMatchObject({ grade: "medium" });
+    expect(report.dataConfidence.message).toContain("소유주체·담보약정·세무·승계");
+    expect(report.dataConfidence.message).toContain("예비 진단");
   });
 
   it("uses event-specific guidance for covered and shortfall 90-day plans", () => {

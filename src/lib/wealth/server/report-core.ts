@@ -701,6 +701,7 @@ function confidenceFor(
   totalAssetsKrw: number,
   otherSharePercent: number,
   monthlyLivingExpenseKrw: number,
+  currentLevel: AssetLevel,
 ): WealthReport["dataConfidence"] {
   if (totalAssetsKrw === 0) {
     return {
@@ -721,6 +722,13 @@ function confidenceFor(
       grade: "medium",
       message:
         "일부 구성 또는 생활비 기준을 보완하면 유동성·구성 격차를 더 정확히 비교할 수 있습니다.",
+    };
+  }
+  if (Number(currentLevel.slice(1)) >= 10) {
+    return {
+      grade: "medium",
+      message:
+        "자산·부채·월 현금흐름의 구조 비교는 가능하지만 L10 이상에서 중요한 소유주체·담보약정·세무·승계 정보는 수집하지 않았습니다. 상위 구간의 지배구조 관련 내용은 예비 진단으로 확인해 주세요.",
     };
   }
   return {
@@ -1233,6 +1241,8 @@ function routeFor(
   const routeLabel = report.level.terminal
     ? `${report.level.current} ${policy.name}`
     : `${report.level.current}→${report.level.next} ${policy.name}`;
+  const firstPriorityIsNearTerm =
+    priorities[0]?.title.startsWith("90일 ") ?? false;
 
   if (plan.framingId === "protect_then_build") {
     const simultaneousChecks = report.risks
@@ -1273,15 +1283,25 @@ function routeFor(
       `${policy.objective} ${lead.summary} ${copy.summary} ${CONNECTION_COPY[plan.connectionId]}`,
       400,
     ),
-    stages: policy.stages.map((stage, index) => ({
-      horizon: horizons[index],
-      title: stage.title,
-      description: stageExplanation(
-        plan.explanationOrderId,
-        stage.focus,
-        priorities[index],
-      ),
-    })),
+    stages: policy.stages.map((stage, index) => {
+      const matchedStage =
+        firstPriorityIsNearTerm && index === 0
+          ? {
+              title: priorities[0].title,
+              focus:
+                "확정된 90일 일정의 금액·지급일·지급 뒤 3개월 안전선을 장기 구조 조정과 분리합니다.",
+            }
+          : stage;
+      return {
+        horizon: horizons[index],
+        title: matchedStage.title,
+        description: stageExplanation(
+          plan.explanationOrderId,
+          matchedStage.focus,
+          priorities[index],
+        ),
+      };
+    }),
   };
 }
 
@@ -1364,6 +1384,7 @@ export function createReportContext(
     totalAssetsKrw,
     otherShare,
     parsed.profile.monthlyLivingExpenseKrw,
+    currentLevel,
   );
   const level: WealthReport["level"] = {
     current: currentLevel,

@@ -112,7 +112,7 @@ export type EnglishJudgeBrief = Readonly<{
     label: string;
     direction: "below" | "within" | "above";
     value: string;
-    estimatedAmount: string;
+    estimatedAmount?: string;
     explanation: string;
   }>;
   reviewLenses: readonly [
@@ -237,6 +237,18 @@ function buildSafety(report: WealthReport): EnglishJudgeBrief["safety"] {
 function buildConfidence(
   report: WealthReport,
 ): EnglishJudgeBrief["dataConfidence"] {
+  if (
+    report.dataConfidence.grade === "medium" &&
+    Number(report.level.current.slice(1)) >= 10
+  ) {
+    return {
+      grade: "medium",
+      label: "Scoped upper-band input",
+      detail:
+        "The submitted fields support asset, debt, and cash-flow comparison, but ownership, covenant, tax, and succession inputs were not collected. Treat governance findings as provisional.",
+    };
+  }
+
   const copy = {
     high: {
       label: "High input completeness",
@@ -268,19 +280,27 @@ function buildDominantGap(
       label,
       direction: row.direction,
       value: "Within range",
-      estimatedAmount,
       explanation: `${label} is within the WealthCopy internal reference range.`,
     };
   }
 
-  const boundary = row.direction === "below" ? "lower" : "upper";
+  if (row.direction === "above") {
+    return {
+      key: row.key,
+      label,
+      direction: row.direction,
+      value: `${points} above`,
+      explanation: `${label} is ${points} above the upper bound of the WealthCopy internal reference range. This concentration signal does not infer a sell amount.`,
+    };
+  }
+
   return {
     key: row.key,
     label,
     direction: row.direction,
-    value: `${points} ${row.direction}`,
+    value: `${points} below`,
     estimatedAmount,
-    explanation: `${label} is ${points} ${row.direction} the ${boundary} bound of the WealthCopy internal reference range. The policy-derived amount difference to that bound is ${estimatedAmount}.`,
+    explanation: `${label} is ${points} below the lower bound of the WealthCopy internal reference range. The policy-derived shortfall to the next-band lower reference is ${estimatedAmount}; it is not a purchase instruction.`,
   };
 }
 
@@ -304,8 +324,9 @@ function buildPlan(
   const { interpretation } = report;
 
   return {
-    title: "Bounded GPT-5.6 explanation plan",
-    summary: "GPT-5.6 selects presentation emphasis and sequence from four server-approved controls; deterministic product logic owns the report values and rendered sentences.",
+    title: "Bounded explanation plan",
+    summary:
+      "Eligible normal cases may ask GPT-5.6 to choose presentation emphasis and sequence from four server-approved controls; deterministic fallback uses the same validated controls. Financial values and rendered sentences remain server-owned.",
     selections: [
       {
         role: "Framing",
@@ -339,6 +360,7 @@ export function buildEnglishJudgeBrief(
   const dataConfidence = buildConfidence(report);
   const dominantGap = buildDominantGap(getDominantCompositionGap(report));
   const terminal = report.level.terminal;
+  const recoveryBand = report.level.current === "L1";
   const currentLabel = ENGLISH_LEVEL_LABELS[report.level.current];
   const targetLabel = ENGLISH_LEVEL_LABELS[report.level.next];
   const compositionTone = dominantGap.direction === "within" ? "clear" : "review";
@@ -379,6 +401,14 @@ export function buildEnglishJudgeBrief(
           percent: report.level.positionPercent,
           explanation: "L15 has no upper classification threshold, so no progress percentage is implied.",
         }
+      : recoveryBand
+        ? {
+            label: "Band status",
+            value: "Recovery band",
+            percent: report.level.positionPercent,
+            explanation:
+              "L1 covers negative net worth and has no bounded lower threshold, so no in-band percentage is implied.",
+          }
       : {
           label: "In-band position",
           value: `${report.level.positionPercent.toFixed(0)}%`,
@@ -407,7 +437,7 @@ export function buildEnglishJudgeBrief(
     dataConfidence,
     gptPlan: buildPlan(report),
     policy: {
-      reference: "Composition ranges are versioned WealthCopy internal references, not observed population statistics, official grades, or optimal allocations.",
+      reference: "Composition ranges are versioned WealthCopy internal references, not personalized peer matches, observed population statistics, official grades, or optimal allocations.",
       limitation: "This report is not financial advice, a forecast, an expected-return claim, or a transaction instruction.",
       threshold: "Band thresholds and amount differences are decision aids under stated policy assumptions; they do not promise promotion or an outcome.",
     },

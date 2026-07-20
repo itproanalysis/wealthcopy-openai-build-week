@@ -375,7 +375,7 @@ export function WealthReportView({ language, report, previousReport = null, onRe
         <div>
           <article><small>01 / INPUT</small><strong>{language === "en" ? "One household snapshot" : "같은 기준일의 가구 입력"}</strong><p>{language === "en" ? "Eight asset groups, debt and monthly flow are validated under one strict request contract." : "8개 자산군·부채·월 흐름을 하나의 엄격한 입력 계약으로 검증합니다."}</p></article>
           <article><small>02 / CALCULATION</small><strong>{language === "en" ? "Deterministic financial facts" : "결정론적 금융 계산"}</strong><p>{language === "en" ? "Net worth, band, ratios, safeguards and amount differences are calculated by server policy." : "순자산·구간·비율·안전조건·금액 차이는 서버 정책으로 계산합니다."}</p></article>
-          <article><small>03 / REFERENCE</small><strong>{language === "en" ? "Versioned internal ranges" : "버전이 고정된 내부 참고범위"}</strong><p>{language === "en" ? "The eight-group ranges are diagnostic policy references, not observed household portfolios." : "8개 자산군 범위는 진단용 정책 참고값이며 관측 가구 포트폴리오가 아닙니다."}</p></article>
+          <article><small>03 / REFERENCE</small><strong>{language === "en" ? "Versioned internal ranges" : "버전이 고정된 내부 참고범위"}</strong><p>{language === "en" ? "The eight-group ranges are diagnostic policy references, not personalized peer matches or observed household portfolios." : "8개 자산군 범위는 진단용 정책 참고값이며 개인화된 유사가구 매칭이나 관측 가구 포트폴리오가 아닙니다."}</p></article>
           <article><small>04 / LIMIT</small><strong>{language === "en" ? "No forecast or trade instruction" : "예측·거래지시 아님"}</strong><p>{language === "en" ? "No expected return, promotion date, product or buy/sell instruction is produced." : "기대수익률·승급시점·상품·매수·매도 지시는 만들지 않습니다."}</p></article>
         </div>
       </section>

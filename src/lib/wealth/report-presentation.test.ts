@@ -127,10 +127,69 @@ describe("English report presentation", () => {
       "diagnosis_first",
       "structure_to_gap",
     ]);
+    expect(brief.gptPlan.title).toBe("Bounded explanation plan");
+    expect(brief.gptPlan.summary).toContain("Eligible normal cases may ask GPT-5.6");
     expect(brief.gptPlan.boundary).toContain("never receives amounts, ratios, levels, notes");
     expect(brief.policy.reference).toContain("internal references");
     expect(brief.policy.limitation).toContain("not financial advice");
     expect(JSON.stringify(brief)).not.toMatch(/[ㄱ-ㅎㅏ-ㅣ가-힣]/u);
+  });
+
+  it("does not turn an above-range concentration into a zero amount difference", () => {
+    const report = reportFixture();
+    report.composition[1] = {
+      ...report.composition[1],
+      key: "home",
+      direction: "above",
+      gapPercentagePoints: 13.6,
+      estimatedGapKrw: 0,
+    };
+
+    const gap = buildEnglishJudgeBrief(report).dominantGap;
+
+    expect(gap.value).toBe("13.6 pp above");
+    expect(gap.explanation).toContain("above the upper bound");
+    expect(gap.explanation).toContain("does not infer a sell amount");
+    expect(gap.explanation).not.toContain("₩0");
+    expect(gap).not.toHaveProperty("estimatedAmount");
+  });
+
+  it("treats L1 as an unbounded recovery band rather than zero-percent progress", () => {
+    const report = reportFixture();
+    report.level = {
+      ...report.level,
+      current: "L1",
+      next: "L2",
+      currentLabel: "순자산 회복",
+      nextLabel: "생활 안전",
+      netWorthKrw: -10_000_000,
+      targetNetWorthKrw: 0,
+      gapKrw: 10_000_000,
+      positionPercent: 0,
+      terminal: false,
+    };
+
+    const brief = buildEnglishJudgeBrief(report);
+
+    expect(brief.inBandPosition.value).toBe("Recovery band");
+    expect(brief.inBandPosition.explanation).toContain("no bounded lower threshold");
+    expect(brief.inBandPosition.explanation).toContain("no in-band percentage");
+  });
+
+  it("scopes upper-band confidence when governance inputs were not collected", () => {
+    const report = reportFixture();
+    report.level = {
+      ...report.level,
+      current: "L10",
+      next: "L11",
+    };
+    report.dataConfidence = { grade: "medium", message: "상위 구간 예비 진단" };
+
+    const confidence = buildEnglishJudgeBrief(report).dataConfidence;
+
+    expect(confidence.label).toBe("Scoped upper-band input");
+    expect(confidence.detail).toContain("ownership, covenant, tax, and succession");
+    expect(confidence.detail).toContain("provisional");
   });
 
   it("keeps L15 terminal without inventing an L16 target or progress claim", () => {

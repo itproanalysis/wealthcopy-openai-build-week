@@ -21,6 +21,7 @@ import {
 export const runtime = "nodejs";
 
 const MAX_REQUEST_BODY_BYTES = 8_192;
+const MAX_MODEL_CALLS_PER_INSTANCE_PER_MINUTE = 12;
 
 class RequestBodyTooLargeError extends Error {
   constructor() {
@@ -228,14 +229,20 @@ export async function POST(request: Request) {
   if (!context.allowModel) return publicReportResponse(context.fallback);
 
   const safetyIdentifier = anonymousSafetyIdentifier(parsed.data.sessionId);
+  const modelBudgetLimit = consumeRateLimit(
+    "model:global",
+    MAX_MODEL_CALLS_PER_INSTANCE_PER_MINUTE,
+    60_000,
+  );
   const ipLimit = consumeRateLimit(`ip:${requestIp(request)}`, 20, 60_000);
   const sessionLimit = consumeRateLimit(
     `session:${safetyIdentifier}`,
     8,
     60_000,
   );
-  if (!ipLimit.allowed || !sessionLimit.allowed) {
+  if (!modelBudgetLimit.allowed || !ipLimit.allowed || !sessionLimit.allowed) {
     const retryAfterSeconds = Math.max(
+      modelBudgetLimit.retryAfterSeconds,
       ipLimit.retryAfterSeconds,
       sessionLimit.retryAfterSeconds,
     );
