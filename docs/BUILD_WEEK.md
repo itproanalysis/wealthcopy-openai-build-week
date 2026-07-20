@@ -52,7 +52,7 @@
 - [x] Automated L1, L14 and L15 boundary evidence
 - [x] Live URL, verified revision and test summary
 - [x] Final product source commit: `4e52c94` (submission-package base: `7a21ff6`)
-- [ ] Public repository URL
+- [x] Public repository URL: https://github.com/itproanalysis/wealthcopy-openai-build-week
 - [x] Final deployment revision and repeated live smoke evidence
 
 ## Final deployment gate

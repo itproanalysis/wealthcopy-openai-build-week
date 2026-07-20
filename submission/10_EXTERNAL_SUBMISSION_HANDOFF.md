@@ -10,6 +10,7 @@ Use this page only after the entrant confirms the account-bound actions and sign
 | Track | Apps for Your Life |
 | Tagline | See what separates your household wealth structure from the next band—without handing financial decisions to a model. |
 | Live URL | https://wealth-copy-470320899177.asia-northeast3.run.app/ |
+| Public repository URL | https://github.com/itproanalysis/wealthcopy-openai-build-week |
 | Cloud Run revision | `wealth-copy-00011-zxg` (100% traffic) |
 | Product source snapshot commit | `4e52c94` (evidence-only documentation commits follow it on `main`) |
 | Codex `/feedback` session ID | `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd` |
@@ -24,14 +25,14 @@ Recommended description:
 
 > Privacy-first next-band household wealth structure report built with Codex and GPT-5.6.
 
-After GitHub CLI installation and authentication, run from the repository root:
+Completed July 20, 2026. The repository was created publicly and the current `main` history was pushed with:
 
 ```powershell
 gh repo create wealthcopy-openai-build-week --public --source=. --remote=origin --push --description "Privacy-first next-band household wealth structure report built with Codex and GPT-5.6."
 gh repo edit --homepage "https://wealth-copy-470320899177.asia-northeast3.run.app/"
 ```
 
-Then verify that the public repository opens without authentication, `README.md` renders, `LICENSE` is visible, and commit `4e52c94` is in history. Record the URL in `README.md` and `07_SUBMISSION_CHECKLIST.md`.
+Verification must confirm that the public repository opens without authentication, `README.md` renders, `LICENSE` is visible, and commit `4e52c94` is in history. The URL is recorded in the root and submission READMEs, `docs/BUILD_WEEK.md`, and `07_SUBMISSION_CHECKLIST.md`.
 
 ## 2. Publish the YouTube demo
 
@@ -47,7 +48,7 @@ Description:
 >
 > Live demo: https://wealth-copy-470320899177.asia-northeast3.run.app/
 >
-> Source: [PUBLIC_REPOSITORY_URL]
+> Source: https://github.com/itproanalysis/wealthcopy-openai-build-week
 >
 > Educational structure diagnosis only; not investment, tax, legal, credit, or insurance advice.
 

@@ -11,7 +11,7 @@ This folder is the operator package for the OpenAI Build Week 2026 submission. T
 | Latest verified live revision | `wealth-copy-00011-zxg` (July 20, 2026, 100% traffic) |
 | Concentrated sample | Live and verified on revision `wealth-copy-00011-zxg` |
 | Product source snapshot commit | `4e52c94` (evidence-only documentation commits follow it on `main`) |
-| Public code repository | Not recorded; required before submission |
+| Public code repository | https://github.com/itproanalysis/wealthcopy-openai-build-week |
 | Public YouTube demo | Not recorded; required before submission |
 | Codex `/feedback` session ID | `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd` |
 
@@ -32,8 +32,9 @@ This folder is the operator package for the OpenAI Build Week 2026 submission. T
 
 ## Current external blockers
 
-1. Publish the current `main` branch, verify product source snapshot `4e52c94` is in history, and record the public code repository URL.
-2. Review and publish the final video, then record the public YouTube URL.
-3. Complete the entrant-controlled eligibility attestations and Devpost submission flow in `07_SUBMISSION_CHECKLIST.md`.
+Repository publication is complete: the current `main` branch is public at https://github.com/itproanalysis/wealthcopy-openai-build-week and includes product source snapshot `4e52c94` in its history.
+
+1. Review and publish the final video, then record the public YouTube URL.
+2. Complete the entrant-controlled eligibility attestations and Devpost submission flow in `07_SUBMISSION_CHECKLIST.md`.
 
 The official deadline is July 21, 2026 at 5:00 PM Pacific Time, shown by Devpost as July 22, 2026 at 9:00 AM KST.

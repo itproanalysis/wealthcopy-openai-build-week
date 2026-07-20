@@ -23,7 +23,7 @@ Source of truth: OpenAI Build Week Devpost overview and Official Rules, reviewed
 - [x] Commit the concentrated-sample candidate and final accessibility adjustment: `4e52c94`.
 - [x] Deploy the concentrated-sample source to Cloud Run and record revision `wealth-copy-00011-zxg`.
 - [x] Verify the live button label, KRW 440M / KRW 40M sample, 63.6% home share, and 13.6%p difference.
-- [ ] Public or judge-shared code repository URL entered.
+- [x] Public code repository published and recorded: https://github.com/itproanalysis/wealthcopy-openai-build-week
 - [ ] Public YouTube video under three minutes entered.
 - [x] Final 2:17 video file has English audio and explicitly covers the product, Codex, and GPT-5.6.
 - [ ] Final images uploaded to Devpost.
