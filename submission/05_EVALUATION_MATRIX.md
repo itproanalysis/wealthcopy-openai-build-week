@@ -2,7 +2,7 @@
 
 This matrix distinguishes deterministic financial behavior from optional GPT-5.6 explanation orchestration. “Model call” means the context is eligible for bounded four-ID selection; all financial outputs exist before that call.
 
-The concentrated L6 row matches Cloud Run revision `wealth-copy-00010-2nf`; the same case was rerun against the public URL before the package was finalized.
+The concentrated L6 row matches Cloud Run revision `wealth-copy-00011-zxg`; the same case was rerun against the public URL before the package was finalized.
 
 | Case | Input condition | Deterministic product result | Orchestration policy | Model call |
 | --- | --- | --- | --- | --- |

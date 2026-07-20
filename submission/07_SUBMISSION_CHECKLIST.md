@@ -20,8 +20,8 @@ Source of truth: OpenAI Build Week Devpost overview and Official Rules, reviewed
 - [x] README includes setup, sample data, Codex collaboration, decisions, and GPT-5.6 use.
 - [x] Relevant source license prepared: MIT.
 - [x] Codex `/feedback` session ID recorded: `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd`.
-- [x] Commit the concentrated-sample candidate and submission package: `7a21ff6`.
-- [x] Deploy the concentrated-sample source to Cloud Run and record revision `wealth-copy-00010-2nf`.
+- [x] Commit the concentrated-sample candidate and final accessibility adjustment: `4e52c94`.
+- [x] Deploy the concentrated-sample source to Cloud Run and record revision `wealth-copy-00011-zxg`.
 - [x] Verify the live button label, KRW 440M / KRW 40M sample, 63.6% home share, and 13.6%p difference.
 - [ ] Public or judge-shared code repository URL entered.
 - [ ] Public YouTube video under three minutes entered.
@@ -40,14 +40,15 @@ Source of truth: OpenAI Build Week Devpost overview and Official Rules, reviewed
 - [x] Exact amounts, ratios, levels, raw notes, and public prose are excluded from model input.
 - [x] Invalid model orchestration returns deterministic fallback parity.
 - [x] Lint, type check, 54 tests, and production build pass.
-- [x] Final revision `wealth-copy-00010-2nf` passed the root, health, and strict report smoke tests with 100% traffic.
+- [x] Final revision `wealth-copy-00011-zxg` passed the root, health, and strict report smoke tests with 100% traffic.
 - [x] Baseline revision passed normal L6-L7, safety-stop, and terminal L15 live API cases.
 - [x] `/api/v2/plan` is absent; foreign origin is rejected; responses are no-store.
 - [x] Repeat desktop/mobile, safety-stop, and L15 checks on the final deployed revision.
 - [x] Capture and visually confirm mobile, safety-stop, and L15 submission images.
 - [x] Six-slide PPTX/PDF and nine-page technical evaluation PDF pass render-and-inspect QA.
 - [x] Final MP4 passes duration, codec, audio-level, and eight-frame visual QA.
-- [x] Public source release ZIP generated from commit `7a21ff6` and checksum recorded.
+- [x] Mobile 390px flow, no-overflow report, 52 core text contrast samples, solid focus ring, and reduced-motion rule verified.
+- [x] Public source release ZIP generated from commit `4e52c94` and checksum recorded.
 
 ## External submission flow
 

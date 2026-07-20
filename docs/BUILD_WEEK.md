@@ -38,8 +38,8 @@
 - [x] Production build passes.
 - [x] Tests cover all 15 levels and all eight composition groups.
 - [x] Threshold, arithmetic, zero-denominator and maximum-value edges are covered.
-- [ ] Mobile, keyboard, focus, contrast and reduced-motion checks pass.
-- [x] Live Cloud Run root, `/api/healthz` and `/api/v3/report` passed smoke tests on revision `wealth-copy-00010-2nf`.
+- [x] Mobile layout, keyboard focus, core text contrast and reduced-motion checks pass on the final revision.
+- [x] Live Cloud Run root, `/api/healthz` and `/api/v3/report` passed smoke tests on revision `wealth-copy-00011-zxg`.
 - [x] Live error logs contained no application errors after the documented revision smoke test.
 
 ## Submission evidence
@@ -51,13 +51,13 @@
 - [x] One model-backed four-ID orchestration scenario and fallback parity proof
 - [x] Automated L1, L14 and L15 boundary evidence
 - [x] Live URL, verified revision and test summary
-- [x] Final candidate commit: `7a21ff6`
+- [x] Final product source commit: `4e52c94` (submission-package base: `7a21ff6`)
 - [ ] Public repository URL
 - [x] Final deployment revision and repeated live smoke evidence
 
 ## Final deployment gate
 
-- [x] Commit the concentrated L6 preset, submission text, screenshots and license: `7a21ff6`.
-- [x] Deploy the concentrated preset source to revision `wealth-copy-00010-2nf` with 100% traffic.
+- [x] Commit the concentrated L6 preset, submission text, screenshots, license and final accessibility adjustment: `4e52c94`.
+- [x] Deploy the concentrated preset source to revision `wealth-copy-00011-zxg` with 100% traffic.
 - [x] Verify the live preset values and 63.6% / 13.6%p composition result.
 - [x] Update `docs/GCP_DEPLOYMENT.md` and submission metadata with the final revision.

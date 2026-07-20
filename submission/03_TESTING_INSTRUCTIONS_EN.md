@@ -1,6 +1,6 @@
 # Judge testing instructions
 
-> **Verified deployment:** the path below matches Cloud Run revision `wealth-copy-00010-2nf`, receiving 100% traffic after the final live smoke test.
+> **Verified deployment:** the path below matches Cloud Run revision `wealth-copy-00011-zxg`, receiving 100% traffic after the final live and accessibility smoke tests.
 
 ## Fastest path - no login required
 

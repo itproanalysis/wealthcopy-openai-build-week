@@ -10,8 +10,8 @@ Use this page only after the entrant confirms the account-bound actions and sign
 | Track | Apps for Your Life |
 | Tagline | See what separates your household wealth structure from the next band—without handing financial decisions to a model. |
 | Live URL | https://wealth-copy-470320899177.asia-northeast3.run.app/ |
-| Cloud Run revision | `wealth-copy-00010-2nf` (100% traffic) |
-| Release source commit | `7a21ff6` |
+| Cloud Run revision | `wealth-copy-00011-zxg` (100% traffic) |
+| Release source commit | `4e52c94` |
 | Codex `/feedback` session ID | `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd` |
 | Video file | `video/wealthcopy_build_week_demo.mp4` |
 | Source archive | `output/wealthcopy_source_release.zip` |
@@ -31,7 +31,7 @@ gh repo create wealthcopy-openai-build-week --public --source=. --remote=origin 
 gh repo edit --homepage "https://wealth-copy-470320899177.asia-northeast3.run.app/"
 ```
 
-Then verify that the public repository opens without authentication, `README.md` renders, `LICENSE` is visible, and commit `7a21ff6` is in history. Record the URL in `README.md` and `07_SUBMISSION_CHECKLIST.md`.
+Then verify that the public repository opens without authentication, `README.md` renders, `LICENSE` is visible, and commit `4e52c94` is in history. Record the URL in `README.md` and `07_SUBMISSION_CHECKLIST.md`.
 
 ## 2. Publish the YouTube demo
 

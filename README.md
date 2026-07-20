@@ -14,7 +14,7 @@ The product is intentionally not a portfolio recommender, return forecast, or tr
 
 ## Judge quick start
 
-> **Live judge path:** steps 2-5 match the concentrated sample deployed on Cloud Run revision `wealth-copy-00010-2nf` and captured in `submission/assets/`.
+> **Live judge path:** steps 2-5 match the concentrated sample deployed on Cloud Run revision `wealth-copy-00011-zxg`. The submission screenshots were captured on the functionally identical `wealth-copy-00010-2nf` baseline before the final contrast and focus-ring adjustment.
 
 1. Open the [live demo](https://wealth-copy-470320899177.asia-northeast3.run.app/).
 2. Select **“L6 편중 사례로 먼저 보기”** (try the concentrated L6 sample).

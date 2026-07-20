@@ -2,7 +2,7 @@
 
 The final video must remain under three minutes, be public on YouTube, contain English audio, show the working product, and explain both Codex and GPT-5.6. Use only the current product and verified submission assets.
 
-**Recording baseline:** the concentrated sample is deployed on Cloud Run revision `wealth-copy-00010-2nf` with 100% traffic and passed the live root, health, and report smoke tests.
+**Recording baseline:** the concentrated sample was recorded from Cloud Run revision `wealth-copy-00010-2nf` after it passed the live root, health, and report smoke tests. The public URL now serves the functionally identical `wealth-copy-00011-zxg`, which adds only the final contrast and focus-ring adjustment.
 
 ## 0:00-0:14 - Lead with the result
 

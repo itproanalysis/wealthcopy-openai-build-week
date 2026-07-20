@@ -8,7 +8,7 @@ Generated and verified on July 20, 2026 (Asia/Seoul). All files below are inside
 | `deck/wealthcopy_build_week_deck.pptx` | 582,262 | `221D2964E08EA583E443FF1168053786EDE412F8AD1DDBED7EF4DC125E304F62` | 6 slides, rendered and inspected; no overflow |
 | `output/pdf/wealthcopy_build_week_deck.pdf` | 446,294 | `4A7D48D4473272D161AD1157EF639DE7DCE7D20C15F38FFC0A65C459EB8D63F1` | 6 pages, rendered and inspected |
 | `output/pdf/wealthcopy_technical_evaluation.pdf` | 246,853 | `AB6050FE02BE4369E9A0FEDCD572DA9C86BC48E3EBE0C602C47ABB0EA949E92D` | 9 pages, 9 bookmarks, rendered and inspected; no blank pages |
-| `output/wealthcopy_source_release.zip` | 11,751,446 | `6758C180B8DFBA121129F5DB5BEED4DAF2ABE0E5605CC2EE5E33989F600836AC` | Public source snapshot generated from release commit `7a21ff6`; excludes untracked internal probability notes and superseded planning files |
+| `output/wealthcopy_source_release.zip` | 11,754,046 | `FCA75C73D03C386331E5E003A9F2AEAFF54F60BA0965359D24886D07ED338949` | Public source snapshot generated from final product commit `4e52c94`; excludes untracked internal probability notes and superseded planning files |
 
 ## Screenshot set
 
@@ -21,4 +21,4 @@ Generated and verified on July 20, 2026 (Asia/Seoul). All files below are inside
 - `assets/07_safety_stop.png`
 - `assets/08_l15_terminal.png`
 
-The screenshot set was recaptured from Cloud Run revision `wealth-copy-00010-2nf` after traffic reached 100%. The old Korean planning images are intentionally excluded from the submission set.
+The screenshot set was recaptured from Cloud Run revision `wealth-copy-00010-2nf` after traffic reached 100%. The final public revision `wealth-copy-00011-zxg` is functionally identical and adds only stronger muted-text contrast and a solid keyboard focus ring; its full mobile flow and report were reverified at 390px with no horizontal overflow. The old Korean planning images are intentionally excluded from the submission set.

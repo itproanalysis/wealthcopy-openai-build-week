@@ -88,7 +88,7 @@ The fifteen level thresholds and eight-group composition ranges are WealthCopy-o
 | Secret | `wealth-copy-openai-api-key` through Secret Manager |
 | Model setting | `OPENAI_MODEL=gpt-5.6-luna` |
 
-The latest verified public revision is `wealth-copy-00010-2nf` (July 20, 2026, 100% traffic), as recorded in `docs/GCP_DEPLOYMENT.md`. The concentrated sample matches the deployed judge path and passed the final root, health, and strict report smoke tests.
+The latest verified public revision is `wealth-copy-00011-zxg` (July 20, 2026, 100% traffic), as recorded in `docs/GCP_DEPLOYMENT.md`. The concentrated sample matches the deployed judge path and passed the final root, health, strict report, mobile no-overflow, core text contrast, and keyboard-focus smoke tests.
 
 ## Build Week timeline evidence
 
