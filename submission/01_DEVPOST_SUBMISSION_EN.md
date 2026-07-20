@@ -35,7 +35,7 @@ The server then:
 
 The result is a diagnostic structure report. It does not forecast returns, promise movement to a higher band, or recommend transactions.
 
-For judges, `?judge=1` opens an English input path and English executive brief. It presents the current-to-next path, threshold gap, in-band position, three review lenses, evidence boundary, and the exact bounded explanation controls before the detailed Korean report. Separately, the product maps net worth to one broad published interval from Korea’s official 2025 household survey without interpolating a household-specific position.
+For judges, [open English Judge Mode](https://wealth-copy-470320899177.asia-northeast3.run.app/?judge=1) for an English input path and English executive brief. It presents the current-to-next path, threshold gap, in-band position, three review lenses, evidence boundary, and the exact bounded explanation controls before the detailed Korean report. Separately, the product maps net worth to one broad published interval from Korea’s official 2025 household survey without interpolating a household-specific position.
 
 Repeat review remains privacy-first. The current tab compares the previous report in memory. A user can explicitly download a strict, versioned report snapshot and import it later as a baseline; the app never silently writes financial data to browser storage.
 
@@ -49,7 +49,7 @@ Exact amounts, ratios, levels, raw notes, and user-facing copy never enter the m
 
 ## Method and limits
 
-The next-band composition ranges are WealthCopy-owned review policies. They are not observed Korean household allocations, official percentiles, optimal portfolios, or expected-return estimates. PSID-derived percentile spacing is used only as server-side calibration backdata; no PSID dollar values, source terminology, or inferred Korean ranks reach the browser, public API, model request, or customer-facing report.
+The next-band composition ranges are WealthCopy-owned review policies. They are not observed Korean household allocations, official percentiles, optimal portfolios, or expected-return estimates. Longitudinal household-finance data informs server-only percentile-spacing calibration; no source dollar values, source terminology, or inferred Korean ranks reach the browser, public API, model request, or customer-facing report.
 
 The official Korean context is a separate evidence layer based on the 2025 Survey of Household Finances and Living Conditions. It preserves the published interval boundaries and shares, never estimates within-band rank, and never converts official context into WealthCopy levels or composition targets.
 
@@ -94,4 +94,4 @@ Codex, GPT-5.6, OpenAI Responses API, Structured Outputs, Next.js 16, React 19, 
 
 ## Live demo
 
-https://wealth-copy-470320899177.asia-northeast3.run.app/
+https://wealth-copy-470320899177.asia-northeast3.run.app/?judge=1

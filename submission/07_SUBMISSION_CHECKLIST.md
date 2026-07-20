@@ -28,7 +28,7 @@ The technical submission is complete, but the unchecked items below intentionall
 - [x] Public code repository published and recorded: https://github.com/itproanalysis/wealthcopy-openai-build-week
 - [x] Public YouTube video under three minutes entered: https://youtu.be/RWI-HaFLIRs
 - [x] Final 2:17 video file has English audio and explicitly covers the product, Codex, and GPT-5.6.
-- [x] Final images uploaded to Devpost with six English captions.
+- [x] Final images uploaded to Devpost with eight English captions, including current-revision desktop and mobile Judge Mode evidence.
 
 ## Product and evidence gate
 
@@ -63,6 +63,6 @@ The technical submission is complete, but the unchecked items below intentionall
 - [x] Enter the final English copy, track, technology tags, live URL, repository URL, video URL, and Codex session ID.
 - [x] Upload final screenshots.
 - [x] Review all material in preview mode, including the embedded public video, story, gallery, and outbound links.
-- [x] Submit the entry and record confirmation: https://devpost.com/software/wealthcopy (confirmed July 20, 2026 at 22:11 KST).
+- [x] Submit the entry and record confirmation: https://devpost.com/software/wealthcopy (confirmed July 20, 2026 at 22:11 KST; refreshed and reverified July 21, 2026 at 04:05 KST).
 
 Do not submit the files in `기획서/`. They describe a superseded product concept and conflict with the current report-first service.
