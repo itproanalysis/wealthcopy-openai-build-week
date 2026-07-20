@@ -39,7 +39,9 @@ Source of truth: OpenAI Build Week Devpost overview and Official Rules, reviewed
 - [x] Financial input and report output are not persisted in browser storage.
 - [x] Exact amounts, ratios, levels, raw notes, and public prose are excluded from model input.
 - [x] Invalid model orchestration returns deterministic fallback parity.
-- [x] Lint, type check, 54 tests, and production build pass.
+- [x] Lint, type check, 85 tests, and production build pass.
+- [x] English Judge Mode, official Korean broad-band context and strict user-owned comparison snapshots are covered by tests and browser QA.
+- [x] Four-ID orchestration rejects semantically incoherent combinations and incomplete model responses with fallback parity.
 - [x] Final revision `wealth-copy-00011-zxg` passed the root, health, and strict report smoke tests with 100% traffic.
 - [x] Baseline revision passed normal L6-L7, safety-stop, and terminal L15 live API cases.
 - [x] `/api/v2/plan` is absent; foreign origin is rejected; responses are no-store.

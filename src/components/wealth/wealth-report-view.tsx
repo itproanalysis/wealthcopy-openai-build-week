@@ -3,8 +3,13 @@
 import type { CSSProperties } from "react";
 
 import type { WealthReport } from "@/lib/wealth/wealth-report";
+import { serializeWealthReportSnapshot } from "@/lib/wealth/report-snapshot";
+
+import { KoreaHouseholdContextPanel } from "./korea-household-context-panel";
+import { WealthJudgePanel } from "./wealth-judge-panel";
 
 type WealthReportViewProps = {
+  language: "ko" | "en";
   report: WealthReport;
   previousReport?: WealthReport | null;
   onRestart: () => void;
@@ -90,6 +95,37 @@ function dominantDifferenceCopy(
   return `${item.label} 비중이 참고 ${item.direction === "below" ? "하단보다" : "상단보다"} ${item.gapPercentagePoints.toFixed(1)}%p ${item.direction === "below" ? "낮습니다" : "높습니다"}.`;
 }
 
+function priorityPresentation(
+  priority: WealthReport["priorities"][number],
+  order: WealthReport["interpretation"]["explanationOrderId"],
+) {
+  if (order === "adjustment_first") {
+    return {
+      mainKicker: "조정 가이드 먼저",
+      mainBody: priority.guidance,
+      metricLabel: "현재 판단 근거",
+      sideKicker: "진단 근거",
+      sideBody: priority.diagnosis,
+    };
+  }
+  if (order === "checkpoint_first") {
+    return {
+      mainKicker: "확인 기준 먼저",
+      mainBody: priority.checkpoint,
+      metricLabel: "현재 진단 지표",
+      sideKicker: "진단과 조정 가이드",
+      sideBody: `${priority.diagnosis} ${priority.guidance}`,
+    };
+  }
+  return {
+    mainKicker: `PRIORITY ${priority.rank}`,
+    mainBody: priority.diagnosis,
+    metricLabel: "현재 진단",
+    sideKicker: "조정 가이드",
+    sideBody: priority.guidance,
+  };
+}
+
 function PrintIcon() {
   return <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M7 8V3h10v5M7 17H5a3 3 0 0 1-3-3v-3a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v3a3 3 0 0 1-3 3h-2" /><path d="M7 14h10v7H7z" /></svg>;
 }
@@ -98,8 +134,8 @@ function Chevron() {
   return <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>;
 }
 
-export function WealthReportView({ report, previousReport = null, onRestart }: WealthReportViewProps) {
-  const generatedLabel = new Intl.DateTimeFormat("ko-KR", {
+export function WealthReportView({ language, report, previousReport = null, onRestart }: WealthReportViewProps) {
+  const generatedLabel = new Intl.DateTimeFormat(language === "en" ? "en-US" : "ko-KR", {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -137,12 +173,26 @@ export function WealthReportView({ report, previousReport = null, onRestart }: W
     low: "확인 필요",
   }[report.dataConfidence.grade];
 
+  function downloadSnapshot() {
+    const blob = new Blob([serializeWealthReportSnapshot(report)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `wealthcopy-${report.level.current}-${report.generatedAt.slice(0, 10)}.wealthcopy.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <main className="wc-report-shell wc-rise">
       <header className="wc-report-masthead">
         <div><span>WEALTHCOPY STRUCTURE REPORT</span><strong>{generatedLabel}</strong></div>
-        <div><button type="button" onClick={() => window.print()}><PrintIcon /> 인쇄·PDF 저장</button><button type="button" onClick={onRestart}>입력값 수정</button></div>
+        <div><button type="button" onClick={() => window.print()}><PrintIcon /> {language === "en" ? "Print / save PDF" : "인쇄·PDF 저장"}</button><button type="button" onClick={downloadSnapshot}>{language === "en" ? "Download snapshot" : "비교용 스냅샷 저장"}</button><button type="button" onClick={onRestart}>{language === "en" ? "Edit inputs" : "입력값 수정"}</button></div>
       </header>
+
+      {language === "en" ? <WealthJudgePanel report={report} /> : null}
 
       <section className={`wc-report-hero ${isGuarded ? "guarded" : ""}`} aria-label="자산구조 핵심 요약">
         <div className="wc-executive-top">
@@ -209,6 +259,8 @@ export function WealthReportView({ report, previousReport = null, onRestart }: W
         <article className="accent"><span>{report.level.terminal ? "L15 운영 기준" : `${report.level.next} 진입 순자산`}</span><strong>{formatKrw(report.level.targetNetWorthKrw)}</strong><small>{report.level.terminal ? "최상위 장기운영 구간" : `순자산 부족액 ${formatKrw(report.level.gapKrw)}`}</small></article>
       </section>
 
+      <KoreaHouseholdContextPanel language={language} netWorthKrw={report.level.netWorthKrw} />
+
       <nav className="wc-report-nav" aria-label="리포트 바로가기">
         <span>입력 완결성 <strong>{confidenceLabel}</strong><small>{report.dataConfidence.message}</small></span>
         <a href="#report-priorities">01 우선순위</a><a href="#report-composition">02 자산구성</a><a href="#report-cashflow">03 현금흐름·위험</a><a href="#report-route">04 12개월 경로</a>
@@ -232,13 +284,19 @@ export function WealthReportView({ report, previousReport = null, onRestart }: W
       <section className="wc-report-section" id="report-priorities" aria-labelledby="report-priorities-title">
         <header className="wc-report-section-head compact"><div><span>01 / PRIORITY REVIEW</span><h2 id="report-priorities-title">지금 먼저 볼 구조 3가지</h2><p>위험, 입력 기준 월 현금흐름, 다음 구간 구성 차이 순서로 정리한 검토 가이드입니다.</p></div></header>
         <div className="wc-priority-list">
-          {report.priorities.map((priority) => (
-            <article key={priority.rank}>
-              <div className="wc-priority-rank"><span>0{priority.rank}</span><i /></div>
-              <div className="wc-priority-main"><span>PRIORITY {priority.rank}</span><h3>{priority.title}</h3><p>{priority.diagnosis}</p><div className="wc-priority-metric"><small>현재 진단</small><strong>{priority.metric}</strong></div></div>
-              <div className="wc-priority-guide"><span>조정 가이드</span><p>{priority.guidance}</p><div><small>확인 기준</small><strong>{priority.checkpoint}</strong></div>{priority.guardrail ? <em>{priority.guardrail}</em> : null}</div>
-            </article>
-          ))}
+          {report.priorities.map((priority) => {
+            const presentation = priorityPresentation(
+              priority,
+              report.interpretation.explanationOrderId,
+            );
+            return (
+              <article data-reading-order={report.interpretation.explanationOrderId} key={priority.rank}>
+                <div className="wc-priority-rank"><span>0{priority.rank}</span><i /></div>
+                <div className="wc-priority-main"><span>{presentation.mainKicker}</span><h3>{priority.title}</h3><p>{presentation.mainBody}</p><div className="wc-priority-metric"><small>{presentation.metricLabel}</small><strong>{priority.metric}</strong></div></div>
+                <div className="wc-priority-guide"><span>{presentation.sideKicker}</span><p>{presentation.sideBody}</p><div><small>확인 기준</small><strong>{priority.checkpoint}</strong></div>{priority.guardrail ? <em>{priority.guardrail}</em> : null}</div>
+              </article>
+            );
+          })}
         </div>
       </section>
 
@@ -293,7 +351,7 @@ export function WealthReportView({ report, previousReport = null, onRestart }: W
           <dl>
             <div><dt>월 세후소득</dt><dd>{formatKrw(report.cashflow.monthlyIncomeKrw)}</dd></div>
             <div><dt>필수생활비</dt><dd>{formatKrw(report.cashflow.monthlyLivingExpenseKrw)} <small>{formatPercent(report.cashflow.livingCostRatioPercent)}</small></dd></div>
-            <div><dt>월 부채상환</dt><dd>{formatKrw(report.cashflow.monthlyDebtPaymentKrw)} <small>{formatPercent(report.cashflow.debtServiceRatioPercent)}</small></dd></div>
+            <div><dt>월 부채상환</dt><dd>{formatKrw(report.cashflow.monthlyDebtPaymentKrw)} <small>{formatPercent(report.cashflow.debtServiceRatioPercent)} · 세후소득 입력기준, 규제상 DSR 아님</small></dd></div>
             <div><dt>현금성 여유</dt><dd>{report.cashflow.liquidRunwayMonths === null ? "확인 필요" : `${report.cashflow.liquidRunwayMonths.toFixed(1)}개월`} <small>생활비+상환</small></dd></div>
             <div><dt>순자산 / 연소득</dt><dd>{formatMultiple(report.cashflow.netWorthToAnnualIncomeMultiple)}</dd></div>
           </dl>
@@ -312,12 +370,22 @@ export function WealthReportView({ report, previousReport = null, onRestart }: W
         </div>
       </section>
 
+      <section className="wc-evidence-contract" aria-labelledby="wc-evidence-contract-title">
+        <header><span>REPORT EVIDENCE CONTRACT</span><h2 id="wc-evidence-contract-title">{language === "en" ? "What this report calculates—and what it does not claim" : "이 리포트가 계산한 것과 주장하지 않는 것"}</h2></header>
+        <div>
+          <article><small>01 / INPUT</small><strong>{language === "en" ? "One household snapshot" : "같은 기준일의 가구 입력"}</strong><p>{language === "en" ? "Eight asset groups, debt and monthly flow are validated under one strict request contract." : "8개 자산군·부채·월 흐름을 하나의 엄격한 입력 계약으로 검증합니다."}</p></article>
+          <article><small>02 / CALCULATION</small><strong>{language === "en" ? "Deterministic financial facts" : "결정론적 금융 계산"}</strong><p>{language === "en" ? "Net worth, band, ratios, safeguards and amount differences are calculated by server policy." : "순자산·구간·비율·안전조건·금액 차이는 서버 정책으로 계산합니다."}</p></article>
+          <article><small>03 / REFERENCE</small><strong>{language === "en" ? "Versioned internal ranges" : "버전이 고정된 내부 참고범위"}</strong><p>{language === "en" ? "The eight-group ranges are diagnostic policy references, not observed household portfolios." : "8개 자산군 범위는 진단용 정책 참고값이며 관측 가구 포트폴리오가 아닙니다."}</p></article>
+          <article><small>04 / LIMIT</small><strong>{language === "en" ? "No forecast or trade instruction" : "예측·거래지시 아님"}</strong><p>{language === "en" ? "No expected return, promotion date, product or buy/sell instruction is produced." : "기대수익률·승급시점·상품·매수·매도 지시는 만들지 않습니다."}</p></article>
+        </div>
+      </section>
+
       <footer className="wc-report-footer">
         <details className="wc-methodology-disclosure">
           <summary><span>{report.methodology.label}</span><strong>산정 기준과 유의사항 보기 · {report.methodology.version}</strong><i aria-hidden="true">+</i></summary>
           <p>{report.methodology.disclaimer}</p>
         </details>
-        <button type="button" onClick={onRestart}>입력값 수정</button>
+        <button type="button" onClick={onRestart}>{language === "en" ? "Edit inputs" : "입력값 수정"}</button>
       </footer>
     </main>
   );

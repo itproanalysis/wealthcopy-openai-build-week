@@ -26,7 +26,7 @@ For a normal L6 context, the test suite applies this fully allowlisted candidate
 }
 ```
 
-The result changes the executive headline, summary connection, and ordering of route explanations. Levels, amounts, ratios, gaps, safety conditions, priorities, and response schema remain unchanged.
+The result changes the executive headline, summary connection, priority-card reading emphasis, and ordering of route explanations. Levels, amounts, ratios, gaps, safety conditions, priorities, and response schema remain unchanged.
 
 ## Fallback parity proof
 
@@ -38,6 +38,8 @@ Automated tests submit all of the following and assert exact equality with the d
 - a lead insight that is valid globally but disallowed for the current context;
 - an invented explanation-order ID;
 - a connection that is valid globally but disallowed for the current context; and
+- a four-ID combination whose individual IDs are all context-allowed but whose framing/lead/connection are semantically incoherent;
+- an incomplete Responses API result, including `max_output_tokens`; and
 - an otherwise valid plan containing an extra user-facing field.
 
 Safety-stop and low-confidence contexts do not call the model at all. This preserves the same public `wealth-report-v2` shape across missing key, timeout, rate limit, API error, invalid output, and deterministic-only paths.

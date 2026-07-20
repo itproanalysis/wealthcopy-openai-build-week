@@ -14,7 +14,10 @@
 - [x] A 90-day event preserves three months of required outflow; a one-won shortfall activates a safeguard.
 - [x] Editing from a generated report preserves the user's entered values.
 - [x] Editing and regenerating shows an in-memory comparison without persisting either report.
+- [x] A user-controlled, strict JSON snapshot can be downloaded and re-imported as a comparison baseline without browser persistence.
 - [x] The executive brief connects level gap, dominant composition difference, first safeguard and exactly three adjustment directions above the detailed sections.
+- [x] `?judge=1` and the `EN · JUDGE` toggle provide an English input path and English executive report layer.
+- [x] A separate 2025 Korean official context uses only published net-worth bands and never interpolates a household position.
 - [x] No gamified status, behavior history, product recommendation or automatic-promotion claim remains.
 
 ## API and privacy
@@ -27,17 +30,18 @@
 - [x] Deprecated local plan and behavior-history keys are removed.
 - [x] Exact amounts, ratios, levels, raw notes and public prose are absent from model input.
 - [x] The strict `wealth-report-v2` interpretation contains four context-allowlisted IDs and only server-mapped Korean copy.
-- [x] Any missing, extra or context-invalid orchestration ID rejects the whole plan and returns the deterministic fallback.
-- [x] Missing key, rate limit, API error and invalid model output return the deterministic report shape.
+- [x] Any missing, extra, context-invalid or semantically incoherent four-ID plan rejects the whole plan and returns the deterministic fallback.
+- [x] Missing key, rate limit, incomplete response, API error and invalid model output return the deterministic report shape.
 
 ## Technical verification
 
 - [x] Lint passes with zero warnings.
 - [x] Typecheck passes.
-- [x] Unit and route tests pass: 54 tests across 10 files.
+- [x] Unit and route tests pass: 85 tests across 13 files.
 - [x] Production build passes.
 - [x] Tests cover all 15 levels and all eight composition groups.
 - [x] Threshold, arithmetic, zero-denominator and maximum-value edges are covered.
+- [x] Korean official-band boundaries, snapshot format/size/round-trip and English Judge Mode are covered.
 - [x] Mobile layout, keyboard focus, core text contrast and reduced-motion checks pass on the final revision.
 - [x] Live Cloud Run root, `/api/healthz` and `/api/v3/report` passed smoke tests on revision `wealth-copy-00011-zxg`.
 - [x] Live error logs contained no application errors after the documented revision smoke test.

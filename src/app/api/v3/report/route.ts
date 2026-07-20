@@ -260,6 +260,9 @@ export async function POST(request: Request) {
         ),
       },
     });
+    if (response.status !== "completed" || response.output_parsed === null) {
+      return publicReportResponse(context.fallback);
+    }
     return publicReportResponse(
       mergeReportOrchestration(context, response.output_parsed),
     );

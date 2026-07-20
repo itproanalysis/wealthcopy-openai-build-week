@@ -7,7 +7,9 @@ import { ASSET_COMPOSITION_KEYS, wealthReportSchema } from "../wealth-report";
 import { ASSET_LEVEL_MINIMUM_NET_WORTH_KRW } from "./asset-level-policy";
 import {
   createReportContext,
+  isCoherentReportOrchestrationPlan,
   mergeReportOrchestration,
+  reportModelInputSchema,
   reportRequestSchema,
   type ReportRequest,
 } from "./report-core";
@@ -671,6 +673,9 @@ describe("deterministic comprehensive report", () => {
     expect(context.modelInput.allowedChoices.leadInsights).toHaveLength(2);
     expect(context.modelInput.allowedChoices.explanationOrders).toHaveLength(3);
     expect(context.modelInput.allowedChoices.connections).toHaveLength(2);
+    expect(reportModelInputSchema.parse(context.modelInput)).toEqual(
+      context.modelInput,
+    );
 
     const selected = mergeReportOrchestration(context, {
       framingId: "cashflow_then_gap",
@@ -713,6 +718,44 @@ describe("deterministic comprehensive report", () => {
         summary: "invented",
       }),
     ).toEqual(context.fallback);
+  });
+
+  it("rejects semantically incoherent four-ID combinations even when every ID is individually allowlisted", () => {
+    const context = createReportContext(
+      requestWith({
+        next90DayEvent: "housing",
+        next90DayAmountKrw: 1_000_000,
+      }),
+    );
+    expect(context.allowModel).toBe(true);
+
+    const frameConflict = {
+      framingId: "structure_then_scale",
+      leadInsightId: "near_term_liquidity_first",
+      explanationOrderId: "checkpoint_first",
+      connectionId: "event_to_cashflow",
+    } as const;
+    expect(context.allowedFramingIds).toContain(frameConflict.framingId);
+    expect(context.allowedLeadInsightIds).toContain(frameConflict.leadInsightId);
+    expect(context.allowedExplanationOrderIds).toContain(
+      frameConflict.explanationOrderId,
+    );
+    expect(context.allowedConnectionIds).toContain(frameConflict.connectionId);
+    expect(isCoherentReportOrchestrationPlan(frameConflict)).toBe(false);
+    expect(mergeReportOrchestration(context, frameConflict)).toEqual(
+      context.fallback,
+    );
+
+    const connectionConflict = {
+      framingId: "cashflow_then_gap",
+      leadInsightId: "largest_gap_sets_direction",
+      explanationOrderId: "checkpoint_first",
+      connectionId: "event_to_cashflow",
+    } as const;
+    expect(isCoherentReportOrchestrationPlan(connectionConflict)).toBe(false);
+    expect(mergeReportOrchestration(context, connectionConflict)).toEqual(
+      context.fallback,
+    );
   });
 
   it("rejects partial, invented, and context-disallowed plans with exact fallback parity", () => {

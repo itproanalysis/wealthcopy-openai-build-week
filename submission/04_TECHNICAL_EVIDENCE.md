@@ -37,18 +37,23 @@ The model selects four independent explanation dimensions from context-specific 
 | --- | --- | --- |
 | Framing | structure-then-scale, cashflow-then-gap | Changes the report’s explanatory lens. |
 | Lead insight | largest gap, safety gate, cashflow pace | Chooses the executive headline and opening interpretation. |
-| Explanation order | diagnosis first, adjustment first, checkpoint first | Changes how each route stage is introduced. |
+| Explanation order | diagnosis first, adjustment first, checkpoint first | Changes the priority-card reading emphasis and route-stage introduction. |
 | Connection | structure-to-gap, safety-to-structure, event-to-cashflow | Connects the executive diagnosis to the route. |
 
-Amounts, ratios, levels, composition values, raw notes, and user-facing prose are excluded from model input. The server owns all final sentences. A partially valid plan is never merged: any invalidity returns exact deterministic fallback parity.
+Amounts, ratios, levels, composition values, raw notes, and user-facing prose are excluded from model input. The server owns all final sentences. The four-ID model input now has its own runtime strict schema; the server validates both each context allowlist and the semantic coherence of the complete framing/lead/connection combination. A partially valid or internally incoherent plan is never merged. Incomplete Responses API output also returns exact deterministic fallback parity.
+
+The model’s bounded role is now observable without exposing financial reasoning. `explanationOrderId` changes whether each priority card leads with diagnosis, adjustment guidance, or checkpoint. English Judge Mode visualizes all four selected controls as one explanation plan. Financial facts, priority rank, safeguards and copy remain unchanged.
 
 ## Methodology boundary
 
 The fifteen level thresholds and eight-group composition ranges are WealthCopy-owned policy versions. They are not observed Korean household allocations, official wealth percentiles, optimized portfolios, or return forecasts. PSID-derived percentile coordinates affect only server-side spacing calibration between policy anchors. PSID dollar values, source terminology, and inferred ranks are not converted for Korean users and do not enter client code, public responses, storage, logs, or model input.
 
+The product separately maps net worth to one unchanged interval from the official 2025 Korean Survey of Household Finances and Living Conditions. It shows the published interval share and cumulative published-band range, never interpolates within an interval, and does not convert that context into WealthCopy levels or composition ranges. Data source, dates, mapping and ratio definitions are recorded in `docs/DATA_GOVERNANCE.md`.
+
 ## Security and privacy controls
 
 - Financial input and report output are not stored in localStorage, sessionStorage, cookies, IndexedDB, or telemetry.
+- An explicit `wealth-report-snapshot-v1` download is a user-owned file, not app persistence. Import is limited to 256 KiB and revalidates the strict nested `wealth-report-v2` contract before the report enters React memory.
 - Only a random anonymous UUID is kept in sessionStorage for abuse control.
 - Deprecated browser-storage keys are deleted at client startup.
 - Request body is streamed with an 8 KiB maximum.
@@ -66,13 +71,15 @@ The fifteen level thresholds and eight-group composition ranges are WealthCopy-o
 | --- | --- |
 | ESLint | Pass, zero warnings |
 | TypeScript | Pass |
-| Automated tests | 54 passed across 10 files |
+| Automated tests | 85 passed across 13 files |
 | Production build | Pass |
 | Production dependency audit | `pnpm audit --prod`: no known vulnerabilities on July 20, 2026 |
 | Level coverage | All L1-L15 boundaries, including terminal L15 |
 | Composition coverage | All eight groups and interpolation anchors |
 | Safety coverage | Monthly deficit, debt burden, liquidity runway, near-term event shortfall, raw-note privacy |
-| Model boundary coverage | Input minimization, strict allowlists, partial/extra/invalid rejection, fallback parity |
+| Model boundary coverage | Input runtime schema, minimization, strict allowlists, semantic combination checks, incomplete/partial/extra/invalid rejection, fallback parity |
+| Official context coverage | All six Korean published-band boundaries, no interpolation, L15 remains in the broad KRW 1B+ interval |
+| Snapshot coverage | Strict version, round trip, 256 KiB limit, malformed/extra/unsupported rejection |
 | Live browser QA | Desktop and 390 x 844 mobile; no horizontal overflow; zero console warnings/errors |
 | Live API QA | Normal L6-L7, safety-stop, L15, no-store, foreign-origin 403, removed v2 404 |
 
@@ -88,7 +95,7 @@ The fifteen level thresholds and eight-group composition ranges are WealthCopy-o
 | Secret | `wealth-copy-openai-api-key` through Secret Manager |
 | Model setting | `OPENAI_MODEL=gpt-5.6-luna` |
 
-The latest verified public revision is `wealth-copy-00011-zxg` (July 20, 2026, 100% traffic), as recorded in `docs/GCP_DEPLOYMENT.md`. The concentrated sample matches the deployed judge path and passed the final root, health, strict report, mobile no-overflow, core text contrast, and keyboard-focus smoke tests.
+The latest verified public revision is recorded in `docs/GCP_DEPLOYMENT.md`. The concentrated sample matches the judge path and passes root, health, strict report, English Judge Mode, official-context, snapshot-contract, mobile no-overflow, core text contrast, and keyboard-focus checks.
 
 ## Build Week timeline evidence
 
@@ -102,7 +109,7 @@ The Git history begins July 14, 2026 and records multiple material product trans
 - `960aaf4` - four-ID explanation orchestration; and
 - `de0d769` - documented verification of Cloud Run revision `wealth-copy-00008-cls`.
 
-At this audit point, the concentrated sample, English submission files, screenshots, and MIT license are present in the working tree but are not yet represented by a final submission commit or deployment. Those remain explicit operator steps in `07_SUBMISSION_CHECKLIST.md`.
+The concentrated sample, English submission files, screenshots, public repository, MIT license and prior Cloud Run revision are all published. The post-submission ranking upgrade adds English Judge Mode, official Korean context, portable comparison snapshots, coherent model-plan validation and expanded automated evidence; its final commit and Cloud Run revision are recorded after the release gate.
 
 Codex project thread: `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd`.
 

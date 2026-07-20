@@ -35,23 +35,29 @@ The server then:
 
 The result is a diagnostic structure report. It does not forecast returns, promise movement to a higher band, or recommend transactions.
 
+For judges, `?judge=1` opens an English input path and English executive brief. It presents the current-to-next path, threshold gap, in-band position, three review lenses, evidence boundary, and the exact bounded explanation controls before the detailed Korean report. Separately, the product maps net worth to one broad published interval from Korea’s official 2025 household survey without interpolating a household-specific position.
+
+Repeat review remains privacy-first. The current tab compares the previous report in memory. A user can explicitly download a strict, versioned report snapshot and import it later as a baseline; the app never silently writes financial data to browser storage.
+
 ## How GPT-5.6 is integrated
 
 We deliberately separate financial truth from generative explanation. Calculations, level thresholds, safety stops, composition gaps, priority content, and all final Korean sentences are deterministic server logic.
 
-GPT-5.6 receives only minimized categorical signals and context-specific allowlists. It selects four bounded explanation decisions: framing, lead insight, explanation order, and connection. The server validates every ID and maps it to server-owned copy. One missing, extra, or invalid choice rejects the entire plan and returns a deterministic fallback with the same strict report schema.
+GPT-5.6 receives only minimized categorical signals and context-specific allowlists. It selects four bounded explanation decisions: framing, lead insight, explanation order, and connection. The server validates every ID, validates the semantic coherence of the whole combination, and maps it to server-owned copy. One missing, extra, invalid, or incoherent choice—or an incomplete model response—rejects the entire plan and returns a deterministic fallback with the same strict report schema.
 
-Exact amounts, ratios, levels, raw notes, and user-facing copy never enter the model request. Responses use Structured Outputs, `store: false`, low reasoning effort, a short timeout, no SDK retries, and a hashed safety identifier. GPT-5.6 can therefore adapt how verified findings are introduced and connected without calculating or recommending financial outcomes.
+Exact amounts, ratios, levels, raw notes, and user-facing copy never enter the model request. Responses use Structured Outputs, `store: false`, low reasoning effort, a short timeout, no SDK retries, and a hashed safety identifier. GPT-5.6 can therefore adapt how verified findings are introduced and connected without calculating or recommending financial outcomes. Its explanation-order choice now changes the reading emphasis of every priority card, making the bounded contribution visible while financial facts remain invariant.
 
 ## Method and limits
 
 The next-band composition ranges are WealthCopy-owned review policies. They are not observed Korean household allocations, official percentiles, optimal portfolios, or expected-return estimates. PSID-derived percentile spacing is used only as server-side calibration backdata; no PSID dollar values, source terminology, or inferred Korean ranks reach the browser, public API, model request, or customer-facing report.
 
+The official Korean context is a separate evidence layer based on the 2025 Survey of Household Finances and Living Conditions. It preserves the published interval boundaries and shares, never estimates within-band rank, and never converts official context into WealthCopy levels or composition targets.
+
 ## How we built it with Codex
 
 Codex supported the project across product discovery, implementation, test expansion, visual QA, security review, and Cloud Run operations. Parallel Codex reviews repeatedly challenged the product from product, technical, and judging perspectives.
 
-The most important human decision was to move from an early plan-led prototype to a report-first architecture covering L1-L15, eight asset groups, safety-first priorities, session-only before/after comparison, and a strict v3 API. Codex also helped implement the four-ID GPT-5.6 boundary, expand the suite to 54 automated tests, inspect desktop and mobile layouts in a real browser, and verify normal, safety-stop, and terminal-L15 flows on GCP.
+The most important human decision was to move from an early plan-led prototype to a report-first architecture covering L1-L15, eight asset groups, safety-first priorities, private repeat comparison, and a strict v3 API. Codex also helped implement the coherent four-ID GPT-5.6 boundary, the English Judge Mode, official-data separation, portable snapshot contract, expand the suite to 85 automated tests, inspect desktop and mobile layouts in a real browser, and verify normal, safety-stop, and terminal-L15 flows on GCP.
 
 The dated Git history documents this evolution during the challenge window. Primary Codex session ID: `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd`.
 
@@ -69,7 +75,10 @@ The dated Git history documents this evolution during the challenge window. Prim
 - Eight-group composition comparison and safety-first route generation.
 - Strict 8 KiB JSON API, same-origin browser gate, no-store responses, and non-root container runtime.
 - Deterministic fallback parity around bounded GPT-5.6 orchestration.
-- The current local candidate passes lint, type checking, 54 tests, and a production build; the latest documented Cloud Run revision passed responsive browser and API smoke tests.
+- English Judge Mode and a visible bounded explanation plan.
+- Official Korean broad-band context without invented precision.
+- User-owned portable comparison snapshots without browser persistence.
+- The current candidate passes lint, type checking, 85 tests, and a production build; the latest documented Cloud Run revision passed responsive browser and API smoke tests.
 
 ## What we learned
 
@@ -77,7 +86,7 @@ The most valuable AI boundary is not always “let the model write the answer.�
 
 ## What is next
 
-We would validate the internal reference policies with Korean household and advisor research, add explicit ownership and governance inputs for upper bands, run accessibility and financial/legal review, and replace the in-memory abuse limiter with an authenticated distributed control before storing any customer data.
+We would validate the internal composition policies with Korean advisor and household research, add ownership and governance inputs for upper bands, run accessibility and financial/legal review, and replace the in-memory abuse limiter with an authenticated distributed control before any opt-in customer-data retention.
 
 ## Built with
 

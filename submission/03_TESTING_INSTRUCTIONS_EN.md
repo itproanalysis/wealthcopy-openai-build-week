@@ -4,10 +4,10 @@
 
 ## Fastest path - no login required
 
-1. Visit https://wealth-copy-470320899177.asia-northeast3.run.app/ in a modern desktop or mobile browser.
-2. Select **L6 편중 사례로 먼저 보기** - “Try the concentrated L6 sample.”
-3. On each of the three steps, select **다음 단계** - “Next.”
-4. On the final step, select **종합 리포트 만들기** - “Create comprehensive report.”
+1. Visit https://wealth-copy-470320899177.asia-northeast3.run.app/?judge=1 in a modern desktop or mobile browser. The header should show **EN · JUDGE** selected.
+2. Select **Try the L6 concentrated sample**.
+3. On each of the three translated input steps, select **Continue**.
+4. On the final step, select **Create the full report**.
 5. The generated report should show:
    - current **L6**, next **L7**;
    - KRW 400M net worth and KRW 100M remaining to L7;
@@ -15,6 +15,7 @@
    - owner-occupied home at 63.6% of assets, 13.6 percentage points above the L7 internal reference ceiling;
    - exactly three ranked priorities and three route horizons; and
    - no critical safety signal for the default sample.
+6. The English Judge Brief should also show the four bounded GPT-5.6 explanation controls, the official Korean household broad band, and the evidence/limitation boundary before the detailed Korean report.
 
 ## Important Korean labels
 
@@ -37,6 +38,8 @@
 ## Test a change without persistence
 
 From the report, select **입력값 수정** (“Edit inputs”), change monthly income, and regenerate. A **변경 전과 비교** (“Compare with previous”) panel will appear. The previous report exists only in React memory for the current page session; refresh or start a new report to clear it.
+
+For a later visit, select **Download snapshot**. The user-controlled JSON contains report amounts. Return to the landing page, select **Import a previous report to compare**, then enter a new household snapshot. The imported baseline remains only in React memory and must pass the strict versioned snapshot contract.
 
 ## Safety behavior
 
@@ -64,4 +67,4 @@ The public API is `POST /api/v3/report`. The retired `/api/v2/plan` route return
 
 ## Product boundaries
 
-WealthCopy is an educational structure-diagnosis tool, not investment, tax, legal, credit, or insurance advice. Its composition ranges are WealthCopy-owned internal review ranges, not observed Korean household statistics, official percentiles, optimal allocations, or expected-return forecasts. PSID-derived percentile spacing is server-only calibration backdata; PSID dollar values, source terminology, and inferred Korean ranks are not exposed in the UI, public API, model request, or report.
+WealthCopy is an educational structure-diagnosis tool, not investment, tax, legal, credit, or insurance advice. Its composition ranges are WealthCopy-owned internal review ranges, not observed Korean household statistics, official percentiles, optimal allocations, or expected-return forecasts. The separate 2025 Korean official context uses only the broad published interval and never estimates a position within it. PSID-derived percentile spacing is server-only calibration backdata; PSID dollar values, source terminology, and inferred Korean ranks are not exposed in the UI, public API, model request, or report.

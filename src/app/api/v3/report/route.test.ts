@@ -181,6 +181,7 @@ describe("POST /api/v3/report", () => {
 
   it("lets Luna select only a strict allowlisted explanation plan from minimized signals", async () => {
     const parse = vi.fn().mockResolvedValue({
+      status: "completed",
       output_parsed: {
         framingId: "cashflow_then_gap",
         leadInsightId: "balance_before_scale",
@@ -249,6 +250,7 @@ describe("POST /api/v3/report", () => {
     expect(missingKeyBody.route.title).toBe("L6→L7 구조화 전환 경로");
 
     const parse = vi.fn().mockResolvedValue({
+      status: "completed",
       output_parsed: {
         framingId: "verify_then_plan",
         leadInsightId: "balance_before_scale",
@@ -267,5 +269,41 @@ describe("POST /api/v3/report", () => {
     expect(invalidResponse.status).toBe(200);
     expect(invalidBody.route.title).toBe("L6→L7 구조화 전환 경로");
     expect(invalidBody.route).toEqual(missingKeyBody.route);
+  });
+
+  it("returns exact fallback parity when the model response is incomplete", async () => {
+    openAiMocks.getOpenAIClient.mockImplementation(() => {
+      throw new openAiMocks.MissingOpenAIKeyError();
+    });
+    const fallbackResponse = await POST(
+      postRequest(JSON.stringify(validPayload), {
+        "x-forwarded-for": "203.0.113.81",
+      }),
+    );
+    const fallbackBody = await fallbackResponse.json();
+
+    const parse = vi.fn().mockResolvedValue({
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+      output_parsed: {
+        framingId: "cashflow_then_gap",
+        leadInsightId: "balance_before_scale",
+        explanationOrderId: "adjustment_first",
+        connectionId: "structure_to_gap",
+      },
+    });
+    openAiMocks.getOpenAIClient.mockReturnValue({ responses: { parse } });
+    const response = await POST(
+      postRequest(JSON.stringify(validPayload), {
+        "x-forwarded-for": "203.0.113.82",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect({ ...body, generatedAt: null }).toEqual({
+      ...fallbackBody,
+      generatedAt: null,
+    });
   });
 });
