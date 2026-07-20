@@ -5,7 +5,7 @@
   --wc-paper: #fffefa;
   --wc-ink: #10241f;
   --wc-ink-2: #293b35;
-  --wc-muted: #69756f;
+  --wc-muted: #5f6c66;
   --wc-line: #d9ddd8;
   --wc-line-dark: #bdc6c0;
   --wc-accent: #167562;
@@ -41,7 +41,7 @@ button:not(:disabled) { cursor: pointer; }
 ::selection { background: #c6ded6; color: #071b16; }
 
 :where(button, input, textarea):focus-visible {
-  outline: 3px solid rgba(22, 117, 98, 0.28);
+  outline: 3px solid var(--wc-accent);
   outline-offset: 3px;
 }
 
@@ -212,7 +212,7 @@ h1[tabindex="-1"]:focus { outline: none; }
 .wc-text-button:hover { color: var(--wc-ink); }
 .wc-step-count { justify-self: end; color: var(--wc-muted); font-size: 11px; font-weight: 750; letter-spacing: .12em; }
 .wc-step-rail { display: flex; justify-content: center; gap: 0; margin: 0; padding: 0; list-style: none; }
-.wc-step-rail li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 7px; width: 150px; color: #8a9590; font-size: 11px; }
+.wc-step-rail li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 7px; width: 150px; color: var(--wc-muted); font-size: 11px; }
 .wc-step-rail li::after { position: absolute; top: 13px; left: calc(50% + 17px); width: calc(100% - 34px); height: 1px; background: var(--wc-line-dark); content: ""; }
 .wc-step-rail li:last-child::after { display: none; }
 .wc-step-rail li > span { position: relative; z-index: 1; display: grid; width: 27px; height: 27px; place-items: center; border: 1px solid var(--wc-line-dark); border-radius: 50%; background: var(--wc-canvas); font-size: 10px; font-weight: 750; }
@@ -236,7 +236,7 @@ h1[tabindex="-1"]:focus { outline: none; }
 .wc-assets-grid { display: grid; grid-template-columns: repeat(2, 1fr); border-top: 1px solid var(--wc-line); border-left: 1px solid var(--wc-line); }
 .wc-asset-input { position: relative; display: grid; grid-template-columns: 38px minmax(0, 1fr) 126px; align-items: center; gap: 12px; min-height: 106px; padding: 20px 22px; border-right: 1px solid var(--wc-line); border-bottom: 1px solid var(--wc-line); transition: background .2s ease; }
 .wc-asset-input:focus-within { background: #f6faf8; }
-.wc-asset-index { color: #9aa39f; font-family: Georgia, serif; font-size: 13px; font-style: italic; }
+.wc-asset-index { color: var(--wc-muted); font-family: Georgia, serif; font-size: 13px; font-style: italic; }
 .wc-asset-copy { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
 .wc-asset-copy strong { font-size: 14px; letter-spacing: -.025em; }
 .wc-asset-copy small { color: var(--wc-muted); font-size: 11px; line-height: 1.45; }
