@@ -9,7 +9,7 @@ Source of truth: OpenAI Build Week Devpost overview and Official Rules, reviewed
 - [ ] The project is original, owned by the entrant, and does not infringe third-party rights.
 - [ ] Any pre-existing work is disclosed; only work added during the submission period is claimed for judging.
 - [ ] Open-source dependencies are used under their applicable licenses.
-- [ ] Entrant has read and accepts the Official Rules, publicity terms, and Devpost terms.
+- [x] Entrant explicitly confirmed agreement to the Official Rules and Devpost Terms before final submission.
 
 ## Required project materials
 
@@ -58,6 +58,6 @@ Source of truth: OpenAI Build Week Devpost overview and Official Rules, reviewed
 - [x] Enter the final English copy, track, technology tags, live URL, repository URL, video URL, and Codex session ID.
 - [x] Upload final screenshots.
 - [x] Review all material in preview mode, including the embedded public video, story, gallery, and outbound links.
-- [ ] Submit the entry and record the confirmation URL/time.
+- [x] Submit the entry and record confirmation: https://devpost.com/software/wealthcopy (confirmed July 20, 2026 at 22:11 KST).
 
 Do not submit the files in `기획서/`. They describe a superseded product concept and conflict with the current report-first service.

@@ -8,6 +8,8 @@ Use this page only after the entrant confirms the account-bound actions and sign
 | --- | --- |
 | Project | WealthCopy |
 | Track | Apps for Your Life |
+| Devpost project URL | https://devpost.com/software/wealthcopy |
+| Devpost status | Submitted; confirmed July 20, 2026 at 22:11 KST |
 | Tagline | See what separates your household wealth structure from the next band—without handing financial decisions to a model. |
 | Live URL | https://wealth-copy-470320899177.asia-northeast3.run.app/ |
 | Public repository URL | https://github.com/itproanalysis/wealthcopy-openai-build-week |
@@ -56,6 +58,8 @@ Description:
 Before publication, English audio, the 2:17 runtime, completed processing, public visibility, and a clean YouTube copyright check were verified. The public watch URL is recorded in `README.md`, the submission README, and `07_SUBMISSION_CHECKLIST.md`.
 
 ## 3. Complete the Devpost entry
+
+Completed July 20, 2026. The entry is submitted to OpenAI Build Week and public at https://devpost.com/software/wealthcopy. The submitted page embeds the public 2:17 YouTube demo, shows the six-caption gallery, renders the final story, and links to the live service and public repository.
 
 1. Join OpenAI Build Week and create a project named **WealthCopy**.
 2. Select **Apps for Your Life** as the single track.
