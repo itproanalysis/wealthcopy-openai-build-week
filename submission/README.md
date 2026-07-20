@@ -10,6 +10,7 @@ This folder is the operator package for the OpenAI Build Week 2026 submission. T
 | Live project | https://wealth-copy-470320899177.asia-northeast3.run.app/ |
 | Latest verified live revision | `wealth-copy-00010-2nf` (July 20, 2026, 100% traffic) |
 | Concentrated sample | Live and verified on revision `wealth-copy-00010-2nf` |
+| Release source commit | `7a21ff6` |
 | Public code repository | Not recorded; required before submission |
 | Public YouTube demo | Not recorded; required before submission |
 | Codex `/feedback` session ID | `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd` |
@@ -25,12 +26,13 @@ This folder is the operator package for the OpenAI Build Week 2026 submission. T
 - `07_SUBMISSION_CHECKLIST.md`: operator checklist and evidence status.
 - `08_CODEX_SESSION_ID.txt`: required Codex thread ID.
 - `09_ARTIFACT_MANIFEST.md`: final binary checksums and visual/playback QA record.
+- `10_EXTERNAL_SUBMISSION_HANDOFF.md`: exact GitHub, YouTube, and Devpost operator fields and sequence.
 - `assets/`: live landing, eight-group input, desktop/full report, composition detail, mobile report, safety-stop, and terminal-L15 PNGs.
-- `deck/`, `output/`, and `video/`: verified six-slide deck, two PDFs, rendered slides/video frames, and the 2:17 English-narrated demo.
+- `deck/`, `output/`, and `video/`: verified six-slide deck, two PDFs, source release ZIP, rendered slides/video frames, and the 2:17 English-narrated demo.
 
 ## Current external blockers
 
-1. Commit the final package, publish it, and record the public code repository URL.
+1. Publish release commit `7a21ff6` and record the public code repository URL.
 2. Review and publish the final video, then record the public YouTube URL.
 3. Complete the entrant-controlled eligibility attestations and Devpost submission flow in `07_SUBMISSION_CHECKLIST.md`.
 

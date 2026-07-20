@@ -51,12 +51,13 @@
 - [x] One model-backed four-ID orchestration scenario and fallback parity proof
 - [x] Automated L1, L14 and L15 boundary evidence
 - [x] Live URL, verified revision and test summary
-- [ ] Final candidate commit and public repository URL
+- [x] Final candidate commit: `7a21ff6`
+- [ ] Public repository URL
 - [x] Final deployment revision and repeated live smoke evidence
 
 ## Final deployment gate
 
-- [ ] Commit the concentrated L6 preset, submission text, screenshots and license.
+- [x] Commit the concentrated L6 preset, submission text, screenshots and license: `7a21ff6`.
 - [x] Deploy the concentrated preset source to revision `wealth-copy-00010-2nf` with 100% traffic.
 - [x] Verify the live preset values and 63.6% / 13.6%p composition result.
 - [x] Update `docs/GCP_DEPLOYMENT.md` and submission metadata with the final revision.

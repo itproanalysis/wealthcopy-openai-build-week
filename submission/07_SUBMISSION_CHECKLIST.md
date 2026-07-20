@@ -20,7 +20,7 @@ Source of truth: OpenAI Build Week Devpost overview and Official Rules, reviewed
 - [x] README includes setup, sample data, Codex collaboration, decisions, and GPT-5.6 use.
 - [x] Relevant source license prepared: MIT.
 - [x] Codex `/feedback` session ID recorded: `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd`.
-- [ ] Commit the concentrated-sample candidate and submission package.
+- [x] Commit the concentrated-sample candidate and submission package: `7a21ff6`.
 - [x] Deploy the concentrated-sample source to Cloud Run and record revision `wealth-copy-00010-2nf`.
 - [x] Verify the live button label, KRW 440M / KRW 40M sample, 63.6% home share, and 13.6%p difference.
 - [ ] Public or judge-shared code repository URL entered.
@@ -47,6 +47,7 @@ Source of truth: OpenAI Build Week Devpost overview and Official Rules, reviewed
 - [x] Capture and visually confirm mobile, safety-stop, and L15 submission images.
 - [x] Six-slide PPTX/PDF and nine-page technical evaluation PDF pass render-and-inspect QA.
 - [x] Final MP4 passes duration, codec, audio-level, and eight-frame visual QA.
+- [x] Public source release ZIP generated from commit `7a21ff6` and checksum recorded.
 
 ## External submission flow
 
