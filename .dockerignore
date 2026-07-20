@@ -5,6 +5,7 @@
 node_modules
 coverage
 docs
+submission
 기획서
 
 .env

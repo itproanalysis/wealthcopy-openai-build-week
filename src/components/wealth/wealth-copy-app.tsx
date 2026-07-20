@@ -123,16 +123,16 @@ const INITIAL_SETUP: SetupState = {
 const SAMPLE_SETUP: SetupState = {
   assetUnit: "eok",
   assets: {
-    liquid: "0.5",
-    home: "1.5",
-    market: "1.2",
-    pension: "0.5",
-    incomeProperty: "0.3",
-    businessPrivate: "0.25",
-    alternatives: "0.15",
-    other: "0.1",
+    liquid: "0.3",
+    home: "2.8",
+    market: "0.7",
+    pension: "0.25",
+    incomeProperty: "0.15",
+    businessPrivate: "0.1",
+    alternatives: "0.05",
+    other: "0.05",
   },
-  totalDebt: "0.5",
+  totalDebt: "0.4",
   monthlyIncome: "1000",
   monthlyLivingExpense: "400",
   monthlyDebtPayment: "100",
@@ -284,7 +284,7 @@ function Landing({ onStart, onTrySample }: { onStart: () => void; onTrySample: (
               내 자산 리포트 만들기 <Icon name="arrow" />
             </button>
             <button className="wc-secondary-button" type="button" onClick={onTrySample}>
-              예시 가구로 먼저 보기
+              L6 편중 사례로 먼저 보기
             </button>
             <span className="wc-privacy-note"><Icon name="lock" /> 입력 금액은 브라우저에 저장하지 않습니다</span>
           </div>
