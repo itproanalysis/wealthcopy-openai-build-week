@@ -24,9 +24,9 @@ Source of truth: OpenAI Build Week Devpost overview and Official Rules, reviewed
 - [x] Deploy the concentrated-sample source to Cloud Run and record revision `wealth-copy-00011-zxg`.
 - [x] Verify the live button label, KRW 440M / KRW 40M sample, 63.6% home share, and 13.6%p difference.
 - [x] Public code repository published and recorded: https://github.com/itproanalysis/wealthcopy-openai-build-week
-- [ ] Public YouTube video under three minutes entered.
+- [x] Public YouTube video under three minutes entered: https://youtu.be/RWI-HaFLIRs
 - [x] Final 2:17 video file has English audio and explicitly covers the product, Codex, and GPT-5.6.
-- [ ] Final images uploaded to Devpost.
+- [x] Final images uploaded to Devpost with six English captions.
 
 ## Product and evidence gate
 
@@ -52,12 +52,12 @@ Source of truth: OpenAI Build Week Devpost overview and Official Rules, reviewed
 
 ## External submission flow
 
-- [ ] Sign in to or register for Devpost.
-- [ ] Join OpenAI Build Week before the deadline.
-- [ ] Create the WealthCopy submission draft.
-- [ ] Enter the final English copy, track, technology tags, live URL, repository URL, video URL, and Codex session ID.
-- [ ] Upload final screenshots.
-- [ ] Review all material in preview mode.
+- [x] Sign in to Devpost.
+- [x] Join OpenAI Build Week before the deadline.
+- [x] Create the WealthCopy submission draft.
+- [x] Enter the final English copy, track, technology tags, live URL, repository URL, video URL, and Codex session ID.
+- [x] Upload final screenshots.
+- [x] Review all material in preview mode, including the embedded public video, story, gallery, and outbound links.
 - [ ] Submit the entry and record the confirmation URL/time.
 
 Do not submit the files in `기획서/`. They describe a superseded product concept and conflict with the current report-first service.

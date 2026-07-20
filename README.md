@@ -2,7 +2,7 @@
 
 **OpenAI Build Week 2026 · Apps for Your Life**
 
-[Live demo](https://wealth-copy-470320899177.asia-northeast3.run.app/) · [Source code](https://github.com/itproanalysis/wealthcopy-openai-build-week) · [Submission package](submission/README.md) · [Deployment evidence](docs/GCP_DEPLOYMENT.md)
+[Live demo](https://wealth-copy-470320899177.asia-northeast3.run.app/) · [Demo video](https://youtu.be/RWI-HaFLIRs) · [Source code](https://github.com/itproanalysis/wealthcopy-openai-build-week) · [Submission package](submission/README.md) · [Deployment evidence](docs/GCP_DEPLOYMENT.md)
 
 WealthCopy turns a household snapshot into a coherent wealth-structure report. It classifies net worth across fifteen internal bands, compares all eight asset groups with the next band’s internal reference range, surfaces safety conditions, and connects the three most important structural adjustments to a twelve-month review route.
 

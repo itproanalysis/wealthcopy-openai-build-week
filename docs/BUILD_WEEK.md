@@ -46,7 +46,7 @@
 
 - [x] Desktop landing, input, report and full-report screenshots
 - [x] Mobile, safety-stop and terminal-L15 screenshots
-- [x] A 2:17 English-narrated product, Codex and GPT-5.6 demo (under the 3:00 limit)
+- [x] A public 2:17 English-narrated product, Codex and GPT-5.6 demo (under the 3:00 limit): https://youtu.be/RWI-HaFLIRs
 - [x] One safety-stop scenario in automated tests and `submission/05_EVALUATION_MATRIX.md`
 - [x] One model-backed four-ID orchestration scenario and fallback parity proof
 - [x] Automated L1, L14 and L15 boundary evidence

@@ -11,6 +11,7 @@ Use this page only after the entrant confirms the account-bound actions and sign
 | Tagline | See what separates your household wealth structure from the next band—without handing financial decisions to a model. |
 | Live URL | https://wealth-copy-470320899177.asia-northeast3.run.app/ |
 | Public repository URL | https://github.com/itproanalysis/wealthcopy-openai-build-week |
+| Public YouTube URL | https://youtu.be/RWI-HaFLIRs |
 | Cloud Run revision | `wealth-copy-00011-zxg` (100% traffic) |
 | Product source snapshot commit | `4e52c94` (evidence-only documentation commits follow it on `main`) |
 | Codex `/feedback` session ID | `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd` |
@@ -36,7 +37,7 @@ Verification must confirm that the public repository opens without authenticatio
 
 ## 2. Publish the YouTube demo
 
-Upload `video/wealthcopy_build_week_demo.mp4` with visibility set to **Public**.
+Completed July 20, 2026. `video/wealthcopy_build_week_demo.mp4` is public at https://youtu.be/RWI-HaFLIRs.
 
 Title:
 
@@ -52,7 +53,7 @@ Description:
 >
 > Educational structure diagnosis only; not investment, tax, legal, credit, or insurance advice.
 
-Before publishing, confirm English audio is audible, runtime is 2:17, HD processing is complete, and visibility says **Public**. Record the public watch URL in `README.md` and `07_SUBMISSION_CHECKLIST.md`.
+Before publication, English audio, the 2:17 runtime, completed processing, public visibility, and a clean YouTube copyright check were verified. The public watch URL is recorded in `README.md`, the submission README, and `07_SUBMISSION_CHECKLIST.md`.
 
 ## 3. Complete the Devpost entry
 
