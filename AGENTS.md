@@ -29,7 +29,7 @@ Turn a household snapshot into a concise wealth-structure report: current L1–L
 - Accept exactly eight household asset amounts, total debt, monthly income, living expense, debt payment, income stability, a near-term event and its amount, a bounded note and an anonymous UUID. Zero assets and zero income are valid when explicitly confirmed.
 - Reject client-supplied totals, levels, benchmark selections and extra fields.
 - Keep the 8 KiB body limit, JSON-only content type, identity encoding, same-origin browser gate and no-store responses.
-- Validate the final `wealth-report-v1` response with its strict Zod schema.
+- Validate the final `wealth-report-v2` response with its strict Zod schema, including the required deterministic `interpretation` mapping.
 
 ## Privacy and persistence
 
@@ -41,7 +41,7 @@ Turn a household snapshot into a concise wealth-structure report: current L1–L
 ## OpenAI boundary
 
 - Classification, amounts, ratios, reference comparison, risks, priority copy and fallback are deterministic server responsibilities.
-- OpenAI may choose only one allowlisted route-framing ID from coarse non-financial signals.
+- OpenAI may choose only a strict allowlisted explanation plan: one framing ID, lead-insight ID, explanation-order ID and connection ID from minimized categorical signals. The server owns every sentence and rejects the whole plan if any ID is invalid for the current context.
 - Never send amounts, ratios, levels, composition values, raw notes or user-facing prose to the model.
 - Preserve Structured Outputs, `store: false`, low reasoning effort, short timeout, no SDK retries, token limits and hashed `safety_identifier`.
 - Model failure must return the same strict public report shape without exposing provenance.

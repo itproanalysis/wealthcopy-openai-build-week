@@ -13,6 +13,8 @@
 - [ ] Data confidence is visible and uncertain holdings reduce confidence.
 - [ ] A 90-day event preserves three months of required outflow; a one-won shortfall activates a safeguard.
 - [ ] Editing from a generated report preserves the user's entered values.
+- [ ] Editing and regenerating shows an in-memory comparison without persisting either report.
+- [ ] The executive brief connects level gap, dominant composition difference, first safeguard and exactly three adjustment directions above the detailed sections.
 - [ ] No completion tracker, behavior history, product recommendation or automatic-promotion claim remains.
 
 ## API and privacy
@@ -24,6 +26,8 @@
 - [ ] Financial inputs and reports are not persisted in the browser.
 - [ ] Deprecated local plan and behavior-history keys are removed.
 - [ ] Exact amounts, ratios, levels, raw notes and public prose are absent from model input.
+- [ ] The strict `wealth-report-v2` interpretation contains four context-allowlisted IDs and only server-mapped Korean copy.
+- [ ] Any missing, extra or context-invalid orchestration ID rejects the whole plan and returns the deterministic fallback.
 - [ ] Missing key, rate limit, API error and invalid model output return the deterministic report shape.
 
 ## Technical verification
@@ -43,6 +47,6 @@
 - [ ] Desktop and mobile report screenshots
 - [ ] A 90-second flow from input to report
 - [ ] One safety-stop scenario
-- [ ] One model-backed framing scenario and fallback parity proof
+- [ ] One model-backed four-ID orchestration scenario and fallback parity proof
 - [ ] L1, L14 and L15 boundary evidence
 - [ ] Live URL, revision, commit and test summary

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { assetLevelSchema, nextAssetLevelSchema } from "./asset-level";
 
-export const WEALTH_REPORT_VERSION = "wealth-report-v1" as const;
+export const WEALTH_REPORT_VERSION = "wealth-report-v2" as const;
 export const WEALTH_REPORT_METHODOLOGY_VERSION =
   "composition-policy-v2" as const;
 export const MAX_REPORT_AMOUNT_KRW = 8_000_000_000_000_000;
@@ -85,6 +85,46 @@ export const reportNext90DayEventSchema = z.enum([
 ]);
 export type ReportNext90DayEvent = z.infer<
   typeof reportNext90DayEventSchema
+>;
+
+export const reportFramingIdSchema = z.enum([
+  "verify_then_plan",
+  "protect_then_build",
+  "cashflow_then_gap",
+  "structure_then_scale",
+]);
+export type ReportFramingId = z.infer<typeof reportFramingIdSchema>;
+
+export const reportLeadInsightIdSchema = z.enum([
+  "safety_is_the_gate",
+  "certainty_before_comparison",
+  "near_term_liquidity_first",
+  "cashflow_sets_pace",
+  "largest_gap_sets_direction",
+  "balance_before_scale",
+]);
+export type ReportLeadInsightId = z.infer<
+  typeof reportLeadInsightIdSchema
+>;
+
+export const reportExplanationOrderIdSchema = z.enum([
+  "diagnosis_first",
+  "adjustment_first",
+  "checkpoint_first",
+]);
+export type ReportExplanationOrderId = z.infer<
+  typeof reportExplanationOrderIdSchema
+>;
+
+export const reportConnectionIdSchema = z.enum([
+  "safety_to_structure",
+  "evidence_to_priority",
+  "event_to_cashflow",
+  "cashflow_to_structure",
+  "structure_to_gap",
+]);
+export type ReportConnectionId = z.infer<
+  typeof reportConnectionIdSchema
 >;
 
 const percentSchema = z.number().finite().min(0).max(100);
@@ -182,6 +222,17 @@ export const wealthReportSchema = z
       .strict(),
     risks: z.array(wealthRiskSchema).max(8),
     priorities: z.array(wealthPrioritySchema).length(3),
+    interpretation: z
+      .object({
+        framingId: reportFramingIdSchema,
+        leadInsightId: reportLeadInsightIdSchema,
+        explanationOrderId: reportExplanationOrderIdSchema,
+        connectionId: reportConnectionIdSchema,
+        headline: z.string().min(1).max(100),
+        summary: z.string().min(1).max(360),
+        connection: z.string().min(1).max(240),
+      })
+      .strict(),
     route: z
       .object({
         title: z.string().min(1).max(100),

@@ -5,11 +5,11 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 
 import {
-  aiReportFramingSelectionSchema,
+  aiReportOrchestrationPlanSchema,
   createReportContext,
-  mergeReportFraming,
+  mergeReportOrchestration,
   reportRequestSchema,
-  WEALTH_REPORT_FRAME_INSTRUCTIONS,
+  WEALTH_REPORT_ORCHESTRATION_INSTRUCTIONS,
 } from "@/lib/wealth/server/report-core";
 import { wealthReportSchema } from "@/lib/wealth/wealth-report";
 import {
@@ -247,30 +247,30 @@ export async function POST(request: Request) {
   try {
     const response = await getOpenAIClient().responses.parse({
       input: JSON.stringify(context.modelInput),
-      instructions: WEALTH_REPORT_FRAME_INSTRUCTIONS,
-      max_output_tokens: 80,
+      instructions: WEALTH_REPORT_ORCHESTRATION_INSTRUCTIONS,
+      max_output_tokens: 160,
       model: getOpenAIModel(),
       reasoning: { effort: "low" },
       safety_identifier: safetyIdentifier,
       store: false,
       text: {
         format: zodTextFormat(
-          aiReportFramingSelectionSchema,
-          "wealth_copy_report_framing",
+          aiReportOrchestrationPlanSchema,
+          "wealth_copy_report_orchestration",
         ),
       },
     });
     return publicReportResponse(
-      mergeReportFraming(context, response.output_parsed),
+      mergeReportOrchestration(context, response.output_parsed),
     );
   } catch (error) {
     if (error instanceof OpenAI.APIError) {
-      console.error("OpenAI report framing selection failed", {
+      console.error("OpenAI report orchestration failed", {
         requestId: error.requestID,
         status: error.status,
       });
     } else if (!(error instanceof MissingOpenAIKeyError)) {
-      console.error("Unexpected report framing selection error", error);
+      console.error("Unexpected report orchestration error", error);
     }
     return publicReportResponse(context.fallback);
   }

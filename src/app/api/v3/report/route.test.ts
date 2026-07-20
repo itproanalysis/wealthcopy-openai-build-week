@@ -107,6 +107,7 @@ describe("POST /api/v3/report", () => {
       "cashflow",
       "risks",
       "priorities",
+      "interpretation",
       "route",
       "dataConfidence",
       "methodology",
@@ -178,9 +179,14 @@ describe("POST /api/v3/report", () => {
     expect(oversizedResponse.status).toBe(413);
   });
 
-  it("lets Luna select only an allowlisted static route framing from coarse signals", async () => {
+  it("lets Luna select only a strict allowlisted explanation plan from minimized signals", async () => {
     const parse = vi.fn().mockResolvedValue({
-      output_parsed: { framingId: "cashflow_then_gap" },
+      output_parsed: {
+        framingId: "cashflow_then_gap",
+        leadInsightId: "balance_before_scale",
+        explanationOrderId: "adjustment_first",
+        connectionId: "structure_to_gap",
+      },
     });
     openAiMocks.getOpenAIClient.mockReturnValue({ responses: { parse } });
     openAiMocks.getOpenAIModel.mockReturnValue("gpt-5.6-luna");
@@ -194,6 +200,13 @@ describe("POST /api/v3/report", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(body.version).toBe("wealth-report-v2");
+    expect(body.interpretation).toMatchObject({
+      framingId: "cashflow_then_gap",
+      leadInsightId: "balance_before_scale",
+      explanationOrderId: "adjustment_first",
+      connectionId: "structure_to_gap",
+    });
     expect(body.route.title).toBe("L6→L7 구조화 전환 경로");
     expect(body.route.summary).toContain("월 현금흐름");
     expect(body.route.stages.map((stage: { title: string }) => stage.title)).toEqual([
@@ -205,7 +218,7 @@ describe("POST /api/v3/report", () => {
     const modelRequest = parse.mock.calls[0]?.[0];
     if (!modelRequest) throw new Error("Expected one OpenAI request.");
     expect(modelRequest).toMatchObject({
-      max_output_tokens: 80,
+      max_output_tokens: 160,
       model: "gpt-5.6-luna",
       reasoning: { effort: "low" },
       store: false,
@@ -219,6 +232,7 @@ describe("POST /api/v3/report", () => {
     );
     expect(serializedModelInput).not.toContain("450000000");
     expect(serializedModelInput).not.toContain("50000000");
+    expect(serializedModelInput).not.toMatch(/(?:recovery|foundation|growth|complexity|governance)/i);
   });
 
   it("returns the deterministic report for a missing key or invalid model selection", async () => {
@@ -235,7 +249,12 @@ describe("POST /api/v3/report", () => {
     expect(missingKeyBody.route.title).toBe("L6→L7 구조화 전환 경로");
 
     const parse = vi.fn().mockResolvedValue({
-      output_parsed: { framingId: "verify_then_plan" },
+      output_parsed: {
+        framingId: "verify_then_plan",
+        leadInsightId: "balance_before_scale",
+        explanationOrderId: "adjustment_first",
+        connectionId: "structure_to_gap",
+      },
     });
     openAiMocks.getOpenAIClient.mockReturnValue({ responses: { parse } });
     openAiMocks.getOpenAIModel.mockReturnValue("gpt-5.6-luna");

@@ -7,7 +7,7 @@ import { ASSET_COMPOSITION_KEYS, wealthReportSchema } from "../wealth-report";
 import { ASSET_LEVEL_MINIMUM_NET_WORTH_KRW } from "./asset-level-policy";
 import {
   createReportContext,
-  mergeReportFraming,
+  mergeReportOrchestration,
   reportRequestSchema,
   type ReportRequest,
 } from "./report-core";
@@ -107,6 +107,7 @@ describe("deterministic comprehensive report", () => {
     const report = context.fallback;
 
     expect(report.generatedAt).toBe("2026-07-16T00:00:00.000Z");
+    expect(report.version).toBe("wealth-report-v2");
     expect(report.level).toMatchObject({
       current: "L6",
       next: "L7",
@@ -132,6 +133,12 @@ describe("deterministic comprehensive report", () => {
       netWorthToAnnualIncomeMultiple: 3.3,
     });
     expect(report.priorities).toHaveLength(3);
+    expect(report.interpretation).toMatchObject({
+      framingId: "structure_then_scale",
+      leadInsightId: "cashflow_sets_pace",
+      explanationOrderId: "diagnosis_first",
+      connectionId: "cashflow_to_structure",
+    });
     expect(report.methodology.version).toBe("composition-policy-v2");
     expect(report.route.title).toBe("L6→L7 구조화 전환 경로");
     expect(report.route.stages.map((stage) => stage.title)).toEqual([
@@ -641,7 +648,7 @@ describe("deterministic comprehensive report", () => {
     expect("score" in confidence).toBe(false);
   });
 
-  it("sends the model only coarse framing signals and accepts only an allowlisted ID", () => {
+  it("sends only minimized categorical signals and applies a fully allowlisted orchestration plan", () => {
     const context = createReportContext(requestWith());
     expect(context.allowModel).toBe(true);
     const serialized = JSON.stringify(context.modelInput);
@@ -659,11 +666,28 @@ describe("deterministic comprehensive report", () => {
       expect(serialized).not.toContain(String(amount));
     }
 
-    const selected = mergeReportFraming(context, {
+    expect(context.modelInput).not.toHaveProperty("signals.levelBand");
+    expect(context.modelInput.allowedChoices.framings).toHaveLength(2);
+    expect(context.modelInput.allowedChoices.leadInsights).toHaveLength(2);
+    expect(context.modelInput.allowedChoices.explanationOrders).toHaveLength(3);
+    expect(context.modelInput.allowedChoices.connections).toHaveLength(2);
+
+    const selected = mergeReportOrchestration(context, {
       framingId: "cashflow_then_gap",
+      leadInsightId: "balance_before_scale",
+      explanationOrderId: "adjustment_first",
+      connectionId: "structure_to_gap",
+    });
+    expect(selected.interpretation).toMatchObject({
+      framingId: "cashflow_then_gap",
+      leadInsightId: "balance_before_scale",
+      explanationOrderId: "adjustment_first",
+      connectionId: "structure_to_gap",
+      headline: "규모 확대보다 역할의 균형이 먼저입니다",
     });
     expect(selected.route.title).toBe("L6→L7 구조화 전환 경로");
     expect(selected.route.summary).toContain("월 현금흐름");
+    expect(selected.route.summary).toContain("구성의 역할 차이");
     expect(selected.route.stages.map((stage) => stage.title)).toEqual([
       "편중 원인 확인",
       "월 흐름 연결",
@@ -673,12 +697,83 @@ describe("deterministic comprehensive report", () => {
       expect(selected.route.stages[index]?.description).toContain(priority.title);
     });
     expect(
-      mergeReportFraming(context, { framingId: "verify_then_plan" }),
+      mergeReportOrchestration(context, {
+        framingId: "verify_then_plan",
+        leadInsightId: "balance_before_scale",
+        explanationOrderId: "adjustment_first",
+        connectionId: "structure_to_gap",
+      }),
     ).toEqual(context.fallback);
     expect(
-      mergeReportFraming(context, {
+      mergeReportOrchestration(context, {
         framingId: "cashflow_then_gap",
+        leadInsightId: "balance_before_scale",
+        explanationOrderId: "adjustment_first",
+        connectionId: "structure_to_gap",
         summary: "invented",
+      }),
+    ).toEqual(context.fallback);
+  });
+
+  it("rejects partial, invented, and context-disallowed plans with exact fallback parity", () => {
+    const context = createReportContext(requestWith());
+    const invalidPlans = [
+      null,
+      { framingId: "cashflow_then_gap" },
+      {
+        framingId: "invented",
+        leadInsightId: "balance_before_scale",
+        explanationOrderId: "adjustment_first",
+        connectionId: "structure_to_gap",
+      },
+      {
+        framingId: "cashflow_then_gap",
+        leadInsightId: "near_term_liquidity_first",
+        explanationOrderId: "adjustment_first",
+        connectionId: "structure_to_gap",
+      },
+      {
+        framingId: "cashflow_then_gap",
+        leadInsightId: "balance_before_scale",
+        explanationOrderId: "guardrail_first",
+        connectionId: "structure_to_gap",
+      },
+      {
+        framingId: "cashflow_then_gap",
+        leadInsightId: "balance_before_scale",
+        explanationOrderId: "adjustment_first",
+        connectionId: "event_to_cashflow",
+      },
+    ];
+
+    for (const candidate of invalidPlans) {
+      expect(mergeReportOrchestration(context, candidate)).toEqual(
+        context.fallback,
+      );
+    }
+  });
+
+  it("keeps safety reports deterministic even when a candidate plan is supplied", () => {
+    const context = createReportContext(
+      requestWith({
+        monthlyIncomeKrw: 5_000_000,
+        monthlyLivingExpenseKrw: 5_500_000,
+        monthlyDebtPaymentKrw: 500_000,
+      }),
+    );
+    expect(context.allowModel).toBe(false);
+    expect(context.fallback.interpretation).toMatchObject({
+      framingId: "protect_then_build",
+      leadInsightId: "safety_is_the_gate",
+      explanationOrderId: "diagnosis_first",
+      connectionId: "safety_to_structure",
+    });
+    expect(
+      mergeReportOrchestration(context, {
+        framingId: "cashflow_then_gap",
+        leadInsightId: "balance_before_scale",
+        explanationOrderId: "adjustment_first",
+        connectionId: "structure_to_gap",
       }),
     ).toEqual(context.fallback);
   });

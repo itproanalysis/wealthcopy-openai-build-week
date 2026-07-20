@@ -120,6 +120,28 @@ const INITIAL_SETUP: SetupState = {
   constraintNote: "",
 };
 
+const SAMPLE_SETUP: SetupState = {
+  assetUnit: "eok",
+  assets: {
+    liquid: "0.5",
+    home: "1.5",
+    market: "1.2",
+    pension: "0.5",
+    incomeProperty: "0.3",
+    businessPrivate: "0.25",
+    alternatives: "0.15",
+    other: "0.1",
+  },
+  totalDebt: "0.5",
+  monthlyIncome: "1000",
+  monthlyLivingExpense: "400",
+  monthlyDebtPayment: "100",
+  incomeStability: "stable",
+  next90DayEvent: "none",
+  next90DayAmount: "",
+  constraintNote: "",
+};
+
 function createInitialSetup(): SetupState {
   return {
     ...INITIAL_SETUP,
@@ -240,7 +262,7 @@ function Icon({ name }: { name: "arrow" | "lock" | "report" | "layers" | "route"
   return <svg {...common}><path d="M6 3h9l3 3v15H6z" /><path d="M15 3v4h4M9 12h6M9 16h6" /></svg>;
 }
 
-function Landing({ onStart }: { onStart: () => void }) {
+function Landing({ onStart, onTrySample }: { onStart: () => void; onTrySample: () => void }) {
   return (
     <main className="wc-landing">
       <section className="wc-hero">
@@ -260,6 +282,9 @@ function Landing({ onStart }: { onStart: () => void }) {
           <div className="wc-hero-actions">
             <button className="wc-primary-button" type="button" onClick={onStart}>
               내 자산 리포트 만들기 <Icon name="arrow" />
+            </button>
+            <button className="wc-secondary-button" type="button" onClick={onTrySample}>
+              예시 가구로 먼저 보기
             </button>
             <span className="wc-privacy-note"><Icon name="lock" /> 입력 금액은 브라우저에 저장하지 않습니다</span>
           </div>
@@ -622,6 +647,7 @@ function SetupFlow({
 export function WealthCopyApp() {
   const [screen, setScreen] = useState<"landing" | "setup" | "report">("landing");
   const [report, setReport] = useState<WealthReport | null>(null);
+  const [previousReport, setPreviousReport] = useState<WealthReport | null>(null);
   const [setup, setSetup] = useState<SetupState>(createInitialSetup);
 
   useEffect(() => cleanupLegacyStorage(), []);
@@ -636,8 +662,23 @@ export function WealthCopyApp() {
 
   function startNewReport() {
     setReport(null);
+    setPreviousReport(null);
     setSetup(createInitialSetup());
     openSetup();
+  }
+
+  function startSampleReport() {
+    setReport(null);
+    setPreviousReport(null);
+    setSetup({ ...SAMPLE_SETUP, assets: { ...SAMPLE_SETUP.assets } });
+    openSetup();
+  }
+
+  function showReport(nextReport: WealthReport) {
+    setPreviousReport(report);
+    setReport(nextReport);
+    setScreen("report");
+    window.scrollTo({ top: 0 });
   }
 
   return (
@@ -646,9 +687,9 @@ export function WealthCopyApp() {
         <button className="wc-brand-button" type="button" onClick={() => setScreen("landing")} aria-label="WealthCopy 홈"><WealthLogo /></button>
         <div className="wc-header-meta"><span>PRIVATE BETA</span></div>
       </header>
-      {screen === "landing" ? <Landing onStart={startNewReport} /> : null}
-      {screen === "setup" ? <SetupFlow setup={setup} setSetup={setSetup} onCancel={() => setScreen("landing")} onComplete={(nextReport) => { setReport(nextReport); setScreen("report"); window.scrollTo({ top: 0 }); }} /> : null}
-      {screen === "report" && report ? <WealthReportView report={report} onRestart={openSetup} /> : null}
+      {screen === "landing" ? <Landing onStart={startNewReport} onTrySample={startSampleReport} /> : null}
+      {screen === "setup" ? <SetupFlow setup={setup} setSetup={setSetup} onCancel={() => setScreen("landing")} onComplete={showReport} /> : null}
+      {screen === "report" && report ? <WealthReportView report={report} previousReport={previousReport} onRestart={openSetup} /> : null}
     </div>
   );
 }
