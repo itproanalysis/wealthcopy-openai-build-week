@@ -10,6 +10,8 @@
 | Devpost submission ID | `1107181-wealthcopy` |
 | Track | Apps for Your Life |
 | Live service | https://wealth-copy-470320899177.asia-northeast3.run.app/ |
+| Latest verified live revision | `wealth-copy-00013-wtl` (100% traffic) |
+| Product source commit | `9a74c10` |
 | Public repository | https://github.com/itproanalysis/wealthcopy-openai-build-week |
 | Public 2:17 demo | https://youtu.be/RWI-HaFLIRs |
 | Codex `/feedback` session ID | `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd` |

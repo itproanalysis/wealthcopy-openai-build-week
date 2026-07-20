@@ -8,7 +8,9 @@ Generated and verified on July 20, 2026 (Asia/Seoul). All files below are inside
 | `deck/wealthcopy_build_week_deck.pptx` | 582,262 | `221D2964E08EA583E443FF1168053786EDE412F8AD1DDBED7EF4DC125E304F62` | 6 slides, rendered and inspected; no overflow |
 | `output/pdf/wealthcopy_build_week_deck.pdf` | 446,294 | `4A7D48D4473272D161AD1157EF639DE7DCE7D20C15F38FFC0A65C459EB8D63F1` | 6 pages, rendered and inspected |
 | `output/pdf/wealthcopy_technical_evaluation.pdf` | 246,853 | `AB6050FE02BE4369E9A0FEDCD572DA9C86BC48E3EBE0C602C47ABB0EA949E92D` | 9 pages, 9 bookmarks, rendered and inspected; no blank pages |
-| `output/wealthcopy_source_release.zip` | 11,754,046 | `FCA75C73D03C386331E5E003A9F2AEAFF54F60BA0965359D24886D07ED338949` | Public source snapshot generated from final product commit `4e52c94`; excludes untracked internal probability notes and superseded planning files |
+| `output/wealthcopy_source_release.zip` | 11,789,784 | `979C5996A62AB8E315328EFA7110924B09F3F4D33255D08E4119D42B47444667` | Public source snapshot generated from final product commit `9a74c10`; excludes untracked internal probability notes and superseded planning files |
+| `assets/09_judge_report_desktop.png` | 55,603 | `250A95B14E24D8F2E3F1151A383088FE4E4229CCB94B57A7FE473C3862C91A23` | Live English Judge Brief captured from revision `wealth-copy-00013-wtl` at 1280×720 and visually inspected |
+| `assets/10_judge_report_mobile.png` | 29,906 | `57314A7A3838D2E4D74C6207710E41DD7701DC5AFE0A98C355A44201A3E4610D` | Live English Judge Brief captured from revision `wealth-copy-00013-wtl` at 390×844 with no horizontal overflow and visually inspected |
 
 ## Screenshot set
 
@@ -20,5 +22,7 @@ Generated and verified on July 20, 2026 (Asia/Seoul). All files below are inside
 - `assets/06_report_mobile.png`
 - `assets/07_safety_stop.png`
 - `assets/08_l15_terminal.png`
+- `assets/09_judge_report_desktop.png`
+- `assets/10_judge_report_mobile.png`
 
-The screenshot set was recaptured from Cloud Run revision `wealth-copy-00010-2nf` after traffic reached 100%. The final public revision `wealth-copy-00011-zxg` is functionally identical and adds only stronger muted-text contrast and a solid keyboard focus ring; its full mobile flow and report were reverified at 390px with no horizontal overflow. The old Korean planning images are intentionally excluded from the submission set.
+The original screenshot set was recaptured from Cloud Run revision `wealth-copy-00010-2nf` after traffic reached 100%. The two current Judge Brief images were captured from `wealth-copy-00013-wtl`, which adds the English Judge Mode, official Korean broad-band context, portable comparison snapshots, visible bounded-AI evidence, stronger model-plan validation, and final trust-boundary corrections. The no-login live judge path is the source of truth for the latest product; its full mobile flow and report were reverified at 390px with no horizontal overflow. The old Korean planning images are intentionally excluded from the submission set.

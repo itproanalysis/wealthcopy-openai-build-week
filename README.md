@@ -14,7 +14,7 @@ The product is intentionally not a portfolio recommender, return forecast, or tr
 
 ## Judge quick start
 
-> **Live judge path:** steps 2-5 match the concentrated sample deployed on Cloud Run revision `wealth-copy-00011-zxg`. The submission screenshots were captured on the functionally identical `wealth-copy-00010-2nf` baseline before the final contrast and focus-ring adjustment.
+> **Live judge path:** steps 2-5 match the concentrated sample deployed on Cloud Run revision `wealth-copy-00013-wtl`. The no-login live path is the source of truth for the latest English Judge Mode, official Korean context, portable comparison flow, and final trust-boundary corrections; the original submission video remains an earlier product baseline.
 
 1. Open the [English Judge Mode](https://wealth-copy-470320899177.asia-northeast3.run.app/?judge=1) (the `EN · JUDGE` toggle is also available in the header).
 2. Select **“Try the L6 concentrated sample.”**
@@ -79,7 +79,7 @@ Quality gate:
 pnpm.cmd check
 ```
 
-The current candidate passes lint, type checking, 85 tests, and a production build. Coverage includes all fifteen bands, all eight asset groups, threshold edges, safety stops, strict request rejection, minimized model input, coherent four-ID orchestration, incomplete-response fallback parity, official Korean interval boundaries, snapshot round-trips, English Judge Mode, no-store headers, and removal of the legacy v2 endpoint.
+The current candidate passes lint, type checking, 89 tests, and a production build. Coverage includes all fifteen bands, all eight asset groups, threshold edges, safety stops, strict request rejection, minimized model input, coherent four-ID orchestration, incomplete-response fallback parity, official Korean interval boundaries, snapshot round-trips, English Judge Mode, upper-band input scoping, L1 recovery framing, near-term route coherence, no-store headers, and removal of the legacy v2 endpoint.
 
 ## Korean product documentation
 

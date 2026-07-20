@@ -37,13 +37,13 @@
 
 - [x] Lint passes with zero warnings.
 - [x] Typecheck passes.
-- [x] Unit and route tests pass: 85 tests across 13 files.
+- [x] Unit and route tests pass: 89 tests across 13 files.
 - [x] Production build passes.
 - [x] Tests cover all 15 levels and all eight composition groups.
 - [x] Threshold, arithmetic, zero-denominator and maximum-value edges are covered.
 - [x] Korean official-band boundaries, snapshot format/size/round-trip and English Judge Mode are covered.
 - [x] Mobile layout, keyboard focus, core text contrast and reduced-motion checks pass on the final revision.
-- [x] Live Cloud Run root, `/api/healthz` and `/api/v3/report` passed smoke tests on revision `wealth-copy-00011-zxg`.
+- [x] Live Cloud Run root, English Judge Mode, `/api/healthz` and `/api/v3/report` passed smoke tests on revision `wealth-copy-00013-wtl`.
 - [x] Live error logs contained no application errors after the documented revision smoke test.
 
 ## Submission evidence
@@ -55,13 +55,14 @@
 - [x] One model-backed four-ID orchestration scenario and fallback parity proof
 - [x] Automated L1, L14 and L15 boundary evidence
 - [x] Live URL, verified revision and test summary
-- [x] Final product source commit: `4e52c94` (submission-package base: `7a21ff6`)
+- [x] Final product source commit: `9a74c10` (ranking-upgrade base: `956fc17`; original submission baseline: `4e52c94`)
 - [x] Public repository URL: https://github.com/itproanalysis/wealthcopy-openai-build-week
 - [x] Final deployment revision and repeated live smoke evidence
 
 ## Final deployment gate
 
-- [x] Commit the concentrated L6 preset, submission text, screenshots, license and final accessibility adjustment: `4e52c94`.
-- [x] Deploy the concentrated preset source to revision `wealth-copy-00011-zxg` with 100% traffic.
+- [x] Commit the ranking upgrade with English Judge Mode, official Korean context, portable snapshots, stronger AI-plan validation and expanded evidence: `956fc17`.
+- [x] Commit the final trust-boundary corrections and four regression tests: `9a74c10`.
+- [x] Deploy the final source to revision `wealth-copy-00013-wtl` with 100% traffic.
 - [x] Verify the live preset values and 63.6% / 13.6%p composition result.
 - [x] Update `docs/GCP_DEPLOYMENT.md` and submission metadata with the final revision.

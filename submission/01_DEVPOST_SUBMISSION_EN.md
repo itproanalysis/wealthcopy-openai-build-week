@@ -57,7 +57,7 @@ The official Korean context is a separate evidence layer based on the 2025 Surve
 
 Codex supported the project across product discovery, implementation, test expansion, visual QA, security review, and Cloud Run operations. Parallel Codex reviews repeatedly challenged the product from product, technical, and judging perspectives.
 
-The most important human decision was to move from an early plan-led prototype to a report-first architecture covering L1-L15, eight asset groups, safety-first priorities, private repeat comparison, and a strict v3 API. Codex also helped implement the coherent four-ID GPT-5.6 boundary, the English Judge Mode, official-data separation, portable snapshot contract, expand the suite to 85 automated tests, inspect desktop and mobile layouts in a real browser, and verify normal, safety-stop, and terminal-L15 flows on GCP.
+The most important human decision was to move from an early plan-led prototype to a report-first architecture covering L1-L15, eight asset groups, safety-first priorities, private repeat comparison, and a strict v3 API. Codex also helped implement the coherent four-ID GPT-5.6 boundary, the English Judge Mode, official-data separation, portable snapshot contract, expand the suite to 89 automated tests, inspect desktop and mobile layouts in a real browser, and verify normal, safety-stop, and terminal-L15 flows on GCP.
 
 The dated Git history documents this evolution during the challenge window. Primary Codex session ID: `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd`.
 
@@ -78,7 +78,7 @@ The dated Git history documents this evolution during the challenge window. Prim
 - English Judge Mode and a visible bounded explanation plan.
 - Official Korean broad-band context without invented precision.
 - User-owned portable comparison snapshots without browser persistence.
-- The current candidate passes lint, type checking, 85 tests, and a production build; the latest documented Cloud Run revision passed responsive browser and API smoke tests.
+- The current candidate passes lint, type checking, 89 tests, and a production build; the latest documented Cloud Run revision passed responsive browser and API smoke tests.
 
 ## What we learned
 

@@ -31,7 +31,7 @@ Strict wealth-report-v2 response, Cache-Control: no-store
 
 ## Why GPT-5.6 is meaningful but bounded
 
-The model selects four independent explanation dimensions from context-specific allowlists:
+The model selects four bounded explanation dimensions from context-specific allowlists, and the server revalidates the combined semantics before accepting the plan:
 
 | Dimension | Examples | User-facing effect |
 | --- | --- | --- |
@@ -71,7 +71,7 @@ The product separately maps net worth to one unchanged interval from the officia
 | --- | --- |
 | ESLint | Pass, zero warnings |
 | TypeScript | Pass |
-| Automated tests | 85 passed across 13 files |
+| Automated tests | 89 passed across 13 files |
 | Production build | Pass |
 | Production dependency audit | `pnpm audit --prod`: no known vulnerabilities on July 20, 2026 |
 | Level coverage | All L1-L15 boundaries, including terminal L15 |
@@ -109,7 +109,7 @@ The Git history begins July 14, 2026 and records multiple material product trans
 - `960aaf4` - four-ID explanation orchestration; and
 - `de0d769` - documented verification of Cloud Run revision `wealth-copy-00008-cls`.
 
-The concentrated sample, English submission files, screenshots, public repository, MIT license and prior Cloud Run revision are all published. The post-submission ranking upgrade adds English Judge Mode, official Korean context, portable comparison snapshots, coherent model-plan validation and expanded automated evidence; its final commit and Cloud Run revision are recorded after the release gate.
+The concentrated sample, English submission files, screenshots, public repository and MIT license are published. The post-submission ranking upgrade adds English Judge Mode, official Korean context, portable comparison snapshots, coherent model-plan validation and expanded automated evidence. Its final product source is commit `9a74c10`, deployed as Cloud Run revision `wealth-copy-00013-wtl` with 100% traffic after live desktop, 390px mobile, L1, L6, L10+, safety-stop, near-term-event, L15, privacy-boundary and error-log checks.
 
 Codex project thread: `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd`.
 

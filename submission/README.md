@@ -10,9 +10,9 @@ This folder is the operator package for the OpenAI Build Week 2026 submission. T
 | Devpost submission | https://devpost.com/software/wealthcopy |
 | Submission status | Submitted; confirmed July 20, 2026 at 22:11 KST |
 | Live project | https://wealth-copy-470320899177.asia-northeast3.run.app/ |
-| Latest verified live revision | `wealth-copy-00011-zxg` (July 20, 2026, 100% traffic) |
-| Concentrated sample | Live and verified on revision `wealth-copy-00011-zxg` |
-| Product source snapshot commit | `4e52c94` (evidence-only documentation commits follow it on `main`) |
+| Latest verified live revision | `wealth-copy-00013-wtl` (July 20, 2026, 100% traffic) |
+| Concentrated sample | Live and verified on revision `wealth-copy-00013-wtl` |
+| Product source snapshot commit | `9a74c10` (release-evidence documentation commits follow it on `main`) |
 | Public code repository | https://github.com/itproanalysis/wealthcopy-openai-build-week |
 | Public YouTube demo | https://youtu.be/RWI-HaFLIRs |
 | Codex `/feedback` session ID | `019f5d64-cdd0-7b41-b6a6-2dd3cb4a79fd` |
@@ -30,7 +30,7 @@ This folder is the operator package for the OpenAI Build Week 2026 submission. T
 - `09_ARTIFACT_MANIFEST.md`: final binary checksums and visual/playback QA record.
 - `10_EXTERNAL_SUBMISSION_HANDOFF.md`: exact GitHub, YouTube, and Devpost operator fields and sequence.
 - `11_SUBMISSION_CONFIRMATION.md`: final Devpost status, public URLs, and confirmation evidence.
-- `assets/`: live landing, eight-group input, desktop/full report, composition detail, mobile report, safety-stop, and terminal-L15 PNGs.
+- `assets/`: live landing, eight-group input, desktop/full report, composition detail, mobile report, safety-stop, terminal-L15, and current English Judge Brief PNGs.
 - `deck/`, `output/`, and `video/`: verified six-slide deck, two PDFs, source release ZIP, rendered slides/video frames, and the 2:17 English-narrated demo.
 
 ## Final submission status

@@ -8,7 +8,7 @@
 | Project | `abis-web-platform` |
 | Region | `asia-northeast3` |
 | Cloud Run service | `wealth-copy` |
-| Last verified revision | `wealth-copy-00011-zxg` (2026-07-20, 100% traffic) |
+| Last verified revision | `wealth-copy-00013-wtl` (2026-07-20, 100% traffic) |
 | Runtime identity | `wealth-copy-run@abis-web-platform.iam.gserviceaccount.com` |
 | Secret | `wealth-copy-openai-api-key` |
 | Model environment | `OPENAI_MODEL=gpt-5.6-luna` |
@@ -19,7 +19,7 @@ Cloud Run terminates TLS and injects `PORT=8080`. The final container runs as a 
 
 The last verification covered the public root and health endpoint, strict `wealth-report-v2` interpretation, normal L6→L7 reporting, a monthly-deficit safety route, the terminal L15 route, foreign-origin rejection, no-store headers, removal of `/api/v2/plan`, and absence of public backdata terminology in API responses and client bundles. The verified revision had no `ERROR`-severity Cloud Run log entries after smoke testing.
 
-The concentrated L6 demo preset is live on `wealth-copy-00011-zxg`. The root page, health endpoint, strict report endpoint, eight composition rows, three priorities, three route stages, `no-store` response policy, mobile no-overflow path, core text contrast, and keyboard focus indicator were reverified after traffic cutover.
+The concentrated L6 demo preset is live on `wealth-copy-00013-wtl`. The root page, English Judge Mode, corrected above-range explanation, gross-asset/debt input boundary, L1 recovery framing, upper-band input scoping, aligned near-term route, health endpoint, strict report endpoint, eight composition rows, three priorities, three route stages, official Korean broad-band context, portable snapshot contract, `no-store` response policy, mobile no-overflow path, foreign-origin rejection, and removed v2 endpoint were reverified after traffic cutover. Browser warning/error logs were empty, and the public HTML plus deployed JavaScript chunks were checked for excluded backdata terminology.
 
 ## Pre-deploy gate
 

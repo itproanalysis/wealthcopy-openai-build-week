@@ -2,7 +2,9 @@
 
 The final video must remain under three minutes, be public on YouTube, contain English audio, show the working product, and explain both Codex and GPT-5.6. Use only the current product and verified submission assets.
 
-**Recording baseline:** the concentrated sample was recorded from Cloud Run revision `wealth-copy-00010-2nf` after it passed the live root, health, and report smoke tests. The public URL now serves the functionally identical `wealth-copy-00011-zxg`, which adds only the final contrast and focus-ring adjustment.
+**Recording baseline:** the concentrated sample was recorded from Cloud Run revision `wealth-copy-00010-2nf` after it passed the live root, health, and report smoke tests. The public URL now serves `wealth-copy-00013-wtl`, which preserves the same core sample and adds English Judge Mode, official Korean household context, portable comparison snapshots, stronger bounded-AI validation, and final trust-boundary corrections. Judges should use the no-login live path for the latest product.
+
+**Evidence note:** the recorded narration truthfully refers to the 54-test baseline available at recording time. The current product source passes 89 tests across 13 files; the live judge path and repository are the source of truth for the ranking upgrade.
 
 ## 0:00-0:14 - Lead with the result
 
